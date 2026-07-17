@@ -1,0 +1,216 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-sans: "Inter", "SF Pro Display", "Segoe UI", sans-serif;
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+    --text-display: 2.25rem;
+    --text-heading: 1.5rem;
+    --text-title: 1.125rem;
+    --text-subtitle: 1rem;
+    --text-body: 0.875rem;
+    --text-caption: 0.75rem;
+    --text-label: 0.6875rem;
+    --leading-display: 1.12;
+    --leading-heading: 1.25;
+    --leading-title: 1.35;
+    --leading-subtitle: 1.5;
+    --leading-body: 1.55;
+    --leading-caption: 1.5;
+    --leading-label: 1.35;
+    --tracking-display: -0.04em;
+    --tracking-heading: -0.025em;
+    --tracking-title: -0.015em;
+    --tracking-label: 0.08em;
+
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-20: 5rem;
+    --container-reading: 42rem;
+    --container-content: 72rem;
+    --container-workspace: 90rem;
+    --grid-min-column: 16rem;
+
+    --radius-sm: 0.375rem;
+    --radius-md: 0.625rem;
+    --radius-lg: 0.875rem;
+    --radius-xl: 1.125rem;
+    --radius-2xl: 1.5rem;
+
+    --duration-fast: 120ms;
+    --duration-normal: 200ms;
+    --duration-slow: 360ms;
+    --duration-thinking: 1.8s;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --background: 222 25% 7%;
+    --surface: 222 22% 10%;
+    --panel: 222 20% 13%;
+    --border: 221 16% 20%;
+    --primary: 213 94% 68%;
+    --primary-foreground: 222 35% 9%;
+    --secondary: 220 15% 19%;
+    --secondary-foreground: 214 22% 91%;
+    --muted: 221 16% 16%;
+    --text-primary: 214 26% 96%;
+    --text-secondary: 217 16% 72%;
+    --text-muted: 218 12% 53%;
+    --accent: 258 82% 72%;
+    --accent-foreground: 258 43% 12%;
+    --success: 153 56% 48%;
+    --success-foreground: 154 42% 9%;
+    --warning: 39 94% 62%;
+    --warning-foreground: 35 48% 10%;
+    --danger: 0 76% 66%;
+    --danger-foreground: 0 42% 10%;
+    --info: 199 89% 61%;
+    --info-foreground: 201 50% 10%;
+    --focus: 213 94% 68%;
+    --hover: 222 19% 17%;
+    --selection: 213 65% 36%;
+    --glass: 222 25% 14% / 0.72;
+    --overlay: 222 28% 3% / 0.72;
+    --shadow-soft: 0 1px 2px hsl(222 40% 2% / 0.25);
+    --shadow-raised: 0 8px 24px hsl(222 40% 2% / 0.24);
+    --shadow-floating: 0 20px 48px hsl(222 40% 2% / 0.38);
+    --shadow-hover: 0 12px 32px hsl(222 40% 2% / 0.32);
+  }
+
+  [data-theme="light"] {
+    color-scheme: light;
+    --background: 220 33% 98%;
+    --surface: 0 0% 100%;
+    --panel: 220 28% 96%;
+    --border: 220 17% 88%;
+    --primary: 215 83% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 21% 92%;
+    --secondary-foreground: 220 24% 18%;
+    --muted: 220 24% 94%;
+    --text-primary: 221 28% 14%;
+    --text-secondary: 218 15% 39%;
+    --text-muted: 218 11% 53%;
+    --accent: 258 71% 55%;
+    --accent-foreground: 0 0% 100%;
+    --success: 153 63% 34%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 92% 41%;
+    --warning-foreground: 0 0% 100%;
+    --danger: 0 72% 51%;
+    --danger-foreground: 0 0% 100%;
+    --info: 202 85% 40%;
+    --info-foreground: 0 0% 100%;
+    --focus: 215 83% 45%;
+    --hover: 220 23% 93%;
+    --selection: 215 75% 88%;
+    --glass: 0 0% 100% / 0.76;
+    --overlay: 220 24% 12% / 0.4;
+    --shadow-soft: 0 1px 2px hsl(220 25% 15% / 0.05);
+    --shadow-raised: 0 8px 24px hsl(220 25% 15% / 0.08);
+    --shadow-floating: 0 20px 48px hsl(220 25% 15% / 0.15);
+    --shadow-hover: 0 12px 32px hsl(220 25% 15% / 0.12);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    background: hsl(var(--background));
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: hsl(var(--selection));
+    color: hsl(var(--text-primary));
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--focus));
+    outline-offset: 2px;
+  }
+
+  button,
+  input {
+    font: inherit;
+  }
+}
+
+@layer utilities {
+  .text-secondary {
+    color: hsl(var(--text-secondary));
+  }
+
+  .text-muted {
+    color: hsl(var(--text-muted));
+  }
+
+  .surface-glass {
+    background: hsl(var(--glass));
+    backdrop-filter: blur(16px);
+  }
+
+  .grid-auto-fit {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--grid-min-column)), 1fr));
+  }
+
+  .blueprint-node {
+    @apply border-border bg-surface shadow-soft min-w-32 rounded-lg border px-3 py-2 text-center;
+  }
+
+  .blueprint-node[data-kind="organization"] {
+    @apply border-primary/40 bg-primary/10 text-primary;
+  }
+
+  .blueprint-node[data-kind="department"] {
+    @apply bg-panel text-foreground;
+  }
+
+  .blueprint-node[data-kind="role"] {
+    @apply bg-muted text-secondary;
+  }
+
+  .blueprint-node[data-kind="worker"] {
+    @apply bg-surface text-muted;
+  }
+
+  .react-flow__edge-path {
+    stroke: hsl(var(--border));
+    stroke-width: 1.5;
+  }
+
+  .react-flow__handle {
+    background: hsl(var(--border));
+    border: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

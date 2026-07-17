@@ -1,0 +1,23 @@
+{
+  "name": "genesis",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Genesis — Build Organizations. Not Prompts.",
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@genesis/frontend",
+    "build": "npm run build --workspace=@genesis/frontend",
+    "lint": "npm run lint --workspace=@genesis/frontend",
+    "typecheck": "npm run typecheck --workspace=@genesis/frontend",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "prettier": "^3.5.3",
+    "prettier-plugin-tailwindcss": "^0.6.11"
+  },
+  "packageManager": "npm@10.9.2"
+}

@@ -1,0 +1,3 @@
+# Compatibility entry point. Genesis uses uv and backend/pyproject.toml as the
+# authoritative Python dependency manifest.
+-r backend/requirements.txt
