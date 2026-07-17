@@ -10,4 +10,4 @@ The FastAPI service for Genesis organization design and execution capabilities.
 - `OPENAI_API_KEY` is required only for the OpenAI provider.
 - `GENESIS_OPENAI_MODEL` defaults to `gpt-5.6` and selects the Responses API model.
 - `GEMINI_API_KEY` is required only for the Gemini provider.
-- `GENESIS_GEMINI_MODEL` defaults to `gemini-2.5-flash`.
+- `GENESIS_GEMINI_MODEL` defaults to `gemini-3.5-flash`.

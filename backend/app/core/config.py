@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Gemini Configuration
     gemini_api_key: SecretStr | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
 
     # Active AI Provider
     ai_provider: str = "gemini"
@@ -41,19 +41,13 @@ class Settings(BaseSettings):
     def has_openai_api_key(self) -> bool:
         """Return whether a non-empty OpenAI API key is available."""
 
-        return bool(
-            self.openai_api_key
-            and self.openai_api_key.get_secret_value().strip()
-        )
+        return bool(self.openai_api_key and self.openai_api_key.get_secret_value().strip())
 
     @property
     def has_gemini_api_key(self) -> bool:
         """Return whether a non-empty Gemini API key is available."""
 
-        return bool(
-            self.gemini_api_key
-            and self.gemini_api_key.get_secret_value().strip()
-        )
+        return bool(self.gemini_api_key and self.gemini_api_key.get_secret_value().strip())
 
 
 @lru_cache

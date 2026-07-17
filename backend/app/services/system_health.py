@@ -156,7 +156,7 @@ class SystemHealthService:
         return ComponentHealth(
             status="operational" if provider_health.is_healthy else "unavailable",
             summary=(
-                "Configured AI provider is reachable."
+                "Configured AI provider credentials and model metadata are reachable."
                 if provider_health.is_healthy
                 else (provider_health.error or "Configured AI provider is unavailable.")
             ),

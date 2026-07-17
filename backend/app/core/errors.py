@@ -21,9 +21,21 @@ class ArchitectProviderError(ArchitectError):
     status_code = 502
 
 
+class ArchitectModelUnavailableError(ArchitectError):
+    code = "organization_architect_model_unavailable"
+    message = (
+        "The configured Gemini model is unavailable. Set GENESIS_GEMINI_MODEL to a supported "
+        "model and try again."
+    )
+    status_code = 503
+
+
 class ArchitectRateLimitError(ArchitectError):
     code = "organization_architect_rate_limited"
-    message = "The Organization Architect is busy. Please try again shortly."
+    message = (
+        "The Organization Architect has reached the configured provider's rate or quota limit. "
+        "Review provider usage and billing, then try again."
+    )
     status_code = 429
 
 

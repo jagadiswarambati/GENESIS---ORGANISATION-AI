@@ -76,7 +76,7 @@ application is available at `http://localhost:3000`.
   execution calls; defaults to `gpt-5.6`.
 - `GEMINI_API_KEY`: required only when `GENESIS_AI_PROVIDER=gemini`.
 - `GENESIS_GEMINI_MODEL`: Gemini model for Gemini-backed Architect and execution calls;
-  defaults to `gemini-2.5-flash`.
+  defaults to `gemini-3.5-flash`.
 
 ### Run locally
 

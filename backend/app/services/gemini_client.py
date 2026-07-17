@@ -1,16 +1,20 @@
 import json
-from typing import Any
+import logging
+from typing import Any, NoReturn
 
 from google import genai
-from google.genai import errors, types
+from google.genai import types
 
 from app.core.config import Settings
 from app.core.errors import (
     ArchitectConfigurationError,
+    ArchitectModelUnavailableError,
     ArchitectProviderError,
     ArchitectRateLimitError,
     ArchitectTimeoutError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiResponsesClient:
@@ -38,27 +42,20 @@ class GeminiResponsesClient:
 
         del schema_name
         try:
-            response = await self._client.models.generate_content(
+            response = await self._client.interactions.create(
                 model=self._model,
-                contents=input_text,
-                config=types.GenerateContentConfig(
-                    system_instruction=instructions,
-                    response_mime_type="application/json",
-                    response_json_schema=schema,
-                ),
+                input=input_text,
+                system_instruction=instructions,
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": schema,
+                },
             )
-        except errors.APIError as error:
-            if error.code == 429:
-                raise ArchitectRateLimitError from error
-            if error.code in {408, 504}:
-                raise ArchitectTimeoutError from error
-            raise ArchitectProviderError from error
-        except TimeoutError as error:
-            raise ArchitectTimeoutError from error
         except Exception as error:
-            raise ArchitectProviderError from error
+            self._raise_provider_error(error)
 
-        output = (response.text or "").strip()
+        output = (response.output_text or "").strip()
         if not output:
             raise ArchitectProviderError
 
@@ -94,21 +91,32 @@ class GeminiResponsesClient:
                 contents=input_text,
                 config=types.GenerateContentConfig(system_instruction=instructions),
             )
-        except errors.APIError as error:
-            if error.code == 429:
-                raise ArchitectRateLimitError from error
-            if error.code in {408, 504}:
-                raise ArchitectTimeoutError from error
-            raise ArchitectProviderError from error
-        except TimeoutError as error:
-            raise ArchitectTimeoutError from error
         except Exception as error:
-            raise ArchitectProviderError from error
+            self._raise_provider_error(error)
 
         output = (response.text or "").strip()
         if not output:
             raise ArchitectProviderError
         return output
+
+    @staticmethod
+    def _raise_provider_error(error: Exception) -> NoReturn:
+        """Map SDK-specific transport failures to Genesis' stable Architect error contract."""
+
+        status_code = getattr(error, "status_code", getattr(error, "code", None))
+        message = str(getattr(error, "message", error)).lower()
+        logger.warning(
+            "Gemini request failed with status %s: %s",
+            status_code,
+            message[:500],
+        )
+        if status_code == 404 and "model" in message:
+            raise ArchitectModelUnavailableError from error
+        if status_code == 429:
+            raise ArchitectRateLimitError from error
+        if status_code in {408, 504} or isinstance(error, TimeoutError):
+            raise ArchitectTimeoutError from error
+        raise ArchitectProviderError from error
 
 
 def create_gemini_responses_client(settings: Settings) -> GeminiResponsesClient:

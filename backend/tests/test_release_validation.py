@@ -356,7 +356,7 @@ def test_provider_factory_and_provider_contracts() -> None:
     missing_gemini_key_settings = Settings(
         database_url="postgresql+asyncpg://genesis:genesis@localhost:5432/genesis",
         ai_provider="gemini",
-        GEMINI_API_KEY=None,
+        gemini_api_key=None,
     )
     with pytest.raises(ExecutionProviderConfigurationError):
         ProviderFactory.create(missing_gemini_key_settings)
@@ -430,7 +430,14 @@ def test_provider_factory_and_provider_contracts() -> None:
         async def generate_content(self, **_: object) -> SimpleNamespace:
             return SimpleNamespace(text=json.dumps({"status": "ok"}))
 
-    responses_client._client = SimpleNamespace(models=StubGeminiModels())
+    class StubGeminiInteractions:
+        async def create(self, **_: object) -> SimpleNamespace:
+            return SimpleNamespace(output_text=json.dumps({"status": "ok"}))
+
+    responses_client._client = SimpleNamespace(
+        models=StubGeminiModels(),
+        interactions=StubGeminiInteractions(),
+    )
     assert asyncio.run(responses_client.health_check()) is True
     assert (
         asyncio.run(

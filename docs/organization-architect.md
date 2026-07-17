@@ -12,7 +12,7 @@ Frontend → POST /api/v1/architect → OrganizationArchitectService
 `POST /api/v1/architect` accepts a mission and returns a typed organization
 blueprint. The active provider is selected with `GENESIS_AI_PROVIDER`. OpenAI uses
 `GENESIS_OPENAI_MODEL` (default `gpt-5.6`) and `OPENAI_API_KEY`; Gemini uses
-`GENESIS_GEMINI_MODEL` (default `gemini-2.5-flash`) and `GEMINI_API_KEY`. Provider
+`GENESIS_GEMINI_MODEL` (default `gemini-3.5-flash`) and `GEMINI_API_KEY`. Provider
 credentials are read only by the backend process.
 
 The API uses strict JSON Schema output and validates the returned text again
