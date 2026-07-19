@@ -54,11 +54,7 @@ Mission Control provides a live operational view of organization generation, exe
 
 ---
 
-## 🏢 Organization Overview
 
-A high-level overview of the generated organization including departments, structure, and execution readiness.
-
-![Organization Overview](docs/screenshots/om.png)
 
 ---
 
