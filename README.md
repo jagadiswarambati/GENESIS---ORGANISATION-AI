@@ -12,7 +12,77 @@
 
 > **Demo video:** _Add the Build Week walkthrough link here._
 
-> **Screenshots:** _Add Mission Initiation, Blueprint, Mission Control, and Mission Dashboard screenshots here._
+# 📸 Screenshots
+
+## 🏠 Mission Input
+
+The entry point of Genesis where users describe their mission in natural language.
+
+![Mission Input](docs/screenshots/home.png)
+
+---
+
+## ❓ Organization Questionnaire
+
+Genesis gathers additional context through a guided organization questionnaire before generating the final blueprint.
+
+![Organization Questionnaire](docs/screenshots/questionaire.png)
+
+---
+
+## 🏗️ Organization Blueprint
+
+The generated organization is visualized as an interactive blueprint showing departments, relationships, and overall structure.
+
+![Organization Blueprint](docs/screenshots/blueprint.png)
+
+---
+
+## 🧬 Organization DNA
+
+Genesis summarizes the organization's identity through its mission, culture, values, and strategic DNA.
+
+![Organization DNA](docs/screenshots/dna.png)
+
+---
+
+## 🎯 Mission Control
+
+Mission Control provides a live operational view of organization generation, execution progress, workers, background AI tasks, and project readiness.
+
+![Mission Control](docs/screenshots/mission-control.png)
+
+---
+
+## 🏢 Organization Overview
+
+A high-level overview of the generated organization including departments, structure, and execution readiness.
+
+![Organization Overview](docs/screenshots/om.png)
+
+---
+
+## 📂 Project Structure
+
+Genesis automatically generates a structured project foundation that serves as the starting point for implementation.
+
+![Project Structure](docs/screenshots/structure.png)
+
+---
+
+## 🛡️ Sandbox Verification
+
+Generated project foundations are safely verified before export to ensure structural integrity and implementation readiness.
+
+![Sandbox Verification](docs/screenshots/sandbox.png)
+
+---
+
+## 📦 Project Export
+
+Export the generated organization, documentation, and project foundation for future development.
+
+![Project Export](docs/screenshots/export.png)
 
 ---
 
