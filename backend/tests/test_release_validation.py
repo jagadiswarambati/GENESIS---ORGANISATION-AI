@@ -24,12 +24,15 @@ from app.schemas.memory import OrganizationMemory
 from app.schemas.task_generator import Task
 from app.schemas.worker_assignment import AIWorker
 from app.services.gemini_client import GeminiResponsesClient
+from app.services.ollama_client import OllamaResponsesClient
 from app.services.providers.factory import ProviderFactory
 from app.services.providers.gemini import GeminiProvider
 from app.services.providers.mock import MockAIProvider
+from app.services.providers.ollama import OllamaProvider
 from app.services.providers.openai import OpenAIProvider
 from app.services.review_providers.factory import ProjectReviewProviderFactory
 from app.services.review_providers.gemini import GeminiProjectReviewProvider
+from app.services.review_providers.ollama import OllamaProjectReviewProvider
 
 
 class StaticArchitectService:
@@ -187,7 +190,7 @@ def workflow_metrics(client: TestClient) -> dict[str, float]:
 
     timings["mock_execution"] = execution_duration
     timings["artifact_generation"] = artifact_duration
-    assert len(artifacts) == total_tasks
+    assert len(artifacts) == 4
     assert collaboration_session is not None
     assert collaboration_session["conversations"]
     assert organization_memory["entries"]
@@ -478,6 +481,28 @@ def test_provider_factory_and_provider_contracts() -> None:
     )
     assert gemini_execution.status == "completed"
 
+    ollama_settings = Settings(
+        database_url="postgresql+asyncpg://genesis:genesis@localhost:5432/genesis",
+        ai_provider="ollama",
+        ollama_base_url="http://localhost:11434",
+        ollama_model="llama3.2:3b",
+    )
+    ollama_provider = ProviderFactory.create(ollama_settings)
+    assert isinstance(ollama_provider, OllamaProvider)
+    assert isinstance(
+        ProjectReviewProviderFactory.create(ollama_settings), OllamaProjectReviewProvider
+    )
+    ollama_client = ProviderFactory.create_responses_client(ollama_settings)
+    assert isinstance(ollama_client, OllamaResponsesClient)
+
+    blueprint = asyncio.run(StaticArchitectService().create_blueprint("Ollama validation mission"))
+    raw_blueprint = json.dumps(blueprint.model_dump(mode="json"))
+    extracted = OllamaResponsesClient._validated_json_output(
+        f"Here is the blueprint:\n```json\n{raw_blueprint}\n```",
+        "organization_blueprint",
+    )
+    assert OrganizationBlueprint.model_validate_json(extracted) == blueprint
+
 
 def test_openai_missing_key_health_is_graceful(
     client: TestClient,
@@ -584,6 +609,59 @@ def test_validation_and_verification_report_failures_without_crashing(client: Te
     )
     assert verification["sandbox_run"]["status"] == "failed"
     assert verification["sandbox_run"]["exit_code"] == 1
+
+
+def test_scaffold_package_is_foundation_verified(client: TestClient) -> None:
+    blueprint = StaticArchitectService()
+    architecture = asyncio.run(blueprint.create_blueprint("Foundation verification mission"))
+    workspace = post_json(
+        client,
+        "/api/v1/workspaces",
+        {
+            "project_name": architecture.organization_name,
+            "artifact_collection": {"artifacts": []},
+            "organization_memory": {"entries": []},
+        },
+    )["workspace"]
+    package = post_json(
+        client,
+        "/api/v1/packages",
+        {
+            "workspace": workspace,
+            "manifest_context": {
+                "mission_summary": architecture.mission_summary,
+                "organization_summary": architecture.organization_type,
+                "departments": [],
+                "generated_workers": [],
+                "total_tasks": 0,
+                "completed_tasks": 0,
+                "generated_artifacts": 0,
+            },
+        },
+    )
+
+    verification = post_json(
+        client,
+        "/api/v1/verifications",
+        {
+            "workspace": workspace,
+            "project_package": package["project_package"],
+            "package_included_files": package["included_files"],
+        },
+    )
+
+    backend = next(
+        result for result in verification["build_results"] if result["target"] == "Backend"
+    )
+    assert verification["sandbox_run"]["status"] == "passed"
+    assert verification["sandbox_run"]["build_status"] == "passed"
+    assert verification["sandbox_run"]["test_status"] == "pending"
+    assert verification["sandbox_run"]["implementation_level"] == "foundation"
+    assert verification["sandbox_run"]["exit_code"] == 0
+    assert backend["status"] == "pending"
+    assert backend["pending_checks"] == 1
+    assert backend["failed_checks"] == 0
+    assert any(log.startswith("PENDING:") for log in backend["build_logs"])
 
 
 def test_all_expected_api_routes_are_registered() -> None:

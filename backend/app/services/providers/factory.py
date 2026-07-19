@@ -1,10 +1,12 @@
 from app.core.config import Settings
 from app.core.errors import ExecutionProviderConfigurationError
 from app.services.gemini_client import GeminiResponsesClient
+from app.services.ollama_client import OllamaResponsesClient
 from app.services.openai_client import ResponsesClient, create_responses_client
 from app.services.providers.base import AIProvider
 from app.services.providers.gemini import GeminiProvider
 from app.services.providers.mock import MockAIProvider
+from app.services.providers.ollama import OllamaProvider
 from app.services.providers.openai import OpenAIProvider
 
 
@@ -19,6 +21,8 @@ class ProviderFactory:
             return OpenAIProvider(settings)
         if settings.ai_provider == "gemini":
             return GeminiProvider(settings)
+        if settings.ai_provider == "ollama":
+            return OllamaProvider(settings)
         raise ExecutionProviderConfigurationError
 
     @staticmethod
@@ -27,4 +31,6 @@ class ProviderFactory:
 
         if settings.ai_provider == "gemini":
             return GeminiResponsesClient(settings)
+        if settings.ai_provider == "ollama":
+            return OllamaResponsesClient(settings)
         return create_responses_client(settings)

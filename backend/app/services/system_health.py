@@ -1,6 +1,7 @@
 from importlib.util import find_spec
+from pathlib import Path
 from shutil import which
-from sys import executable
+from sys import executable, prefix
 
 from app.core.config import Settings
 from app.core.errors import ExecutionProviderConfigurationError
@@ -51,6 +52,9 @@ class SystemHealthService:
                 redis_url_configured=bool(self._settings.redis_url),
                 openai_api_key_configured=self._settings.has_openai_api_key,
                 openai_model=self._settings.openai_model,
+                ollama_configured=self._settings.has_ollama,
+                ollama_base_url=self._settings.ollama_base_url,
+                ollama_model=self._settings.ollama_model,
             ),
             api_connectivity=api_connectivity,
             prerequisites=prerequisites,
@@ -81,7 +85,11 @@ class SystemHealthService:
                 "Gemini-backed Organization Architect missions require GEMINI_API_KEY. "
                 "Mock execution remains available."
             )
-        elif not self._settings.has_openai_api_key:
+        elif self._settings.ai_provider == "ollama" and not self._settings.has_ollama:
+            messages.append(
+                "Ollama-backed missions require GENESIS_OLLAMA_BASE_URL and GENESIS_OLLAMA_MODEL."
+            )
+        elif self._settings.ai_provider == "openai" and not self._settings.has_openai_api_key:
             messages.append(
                 "OpenAI acceptance tests and Organization Architect missions "
                 "require OPENAI_API_KEY. "
@@ -118,6 +126,17 @@ class SystemHealthService:
         )
 
     async def _api_connectivity(self, provider_health: ProviderHealth) -> ComponentHealth:
+        if self._settings.ai_provider == "ollama":
+            if not self._settings.has_ollama:
+                return ComponentHealth(
+                    status="not_configured",
+                    summary=(
+                        "Ollama connectivity is not checked because GENESIS_OLLAMA_BASE_URL "
+                        "or GENESIS_OLLAMA_MODEL is not configured."
+                    ),
+                )
+            return self._connectivity_from_provider(provider_health)
+
         if self._settings.ai_provider == "gemini":
             if not self._settings.has_gemini_api_key:
                 return ComponentHealth(
@@ -151,18 +170,22 @@ class SystemHealthService:
             ),
         )
 
-    @staticmethod
-    def _connectivity_from_provider(provider_health: ProviderHealth) -> ComponentHealth:
+    def _connectivity_from_provider(self, provider_health: ProviderHealth) -> ComponentHealth:
+        if self._settings.ai_provider == "ollama" and provider_health.is_healthy:
+            summary = (
+                f"Ollama server is reachable and model {self._settings.ollama_model} is installed."
+            )
+        elif provider_health.is_healthy:
+            summary = "Configured AI provider credentials and model metadata are reachable."
+        else:
+            summary = provider_health.error or "Configured AI provider is unavailable."
         return ComponentHealth(
             status="operational" if provider_health.is_healthy else "unavailable",
-            summary=(
-                "Configured AI provider credentials and model metadata are reachable."
-                if provider_health.is_healthy
-                else (provider_health.error or "Configured AI provider is unavailable.")
-            ),
+            summary=summary,
         )
 
     def _prerequisites(self) -> list[RuntimePrerequisite]:
+        ruff_available = self._tool_available("ruff")
         return [
             RuntimePrerequisite(
                 name="Python",
@@ -172,21 +195,21 @@ class SystemHealthService:
             ),
             RuntimePrerequisite(
                 name="uv",
-                status="available" if which("uv") else "missing",
+                status="available" if self._tool_available("uv") else "missing",
                 required_for="Synchronizing backend development and test dependencies.",
                 summary=(
                     "uv is available for backend dependency management."
-                    if which("uv")
+                    if self._tool_available("uv")
                     else "Install uv to run the backend release-validation workflow."
                 ),
             ),
             RuntimePrerequisite(
                 name="Ruff",
-                status="available" if which("ruff") else "missing",
+                status="available" if ruff_available else "missing",
                 required_for="Running Python lint and format checks before release.",
                 summary=(
                     "Ruff is available for backend code-quality checks."
-                    if which("ruff")
+                    if ruff_available
                     else "Install Ruff to run backend lint and format validation."
                 ),
             ),
@@ -202,6 +225,14 @@ class SystemHealthService:
             ),
         ]
 
+    @staticmethod
+    def _tool_available(name: str) -> bool:
+        """Detect PATH tools and scripts installed in the active Python environment."""
+
+        scripts_directory = Path(prefix) / "Scripts"
+        executable_name = f"{name}.exe"
+        return bool(which(name) or (scripts_directory / executable_name).is_file())
+
     def _readiness(
         self,
         missing_dependencies: list[str],
@@ -216,6 +247,10 @@ class SystemHealthService:
     def _has_active_provider_key(self) -> bool:
         if self._settings.ai_provider == "gemini":
             return self._settings.has_gemini_api_key
+        if self._settings.ai_provider == "ollama":
+            return self._settings.has_ollama
+        if self._settings.ai_provider == "mock":
+            return True
         return self._settings.has_openai_api_key
 
     def _provider_name(self, provider_id: str) -> str:
@@ -225,4 +260,6 @@ class SystemHealthService:
             return f"OpenAI {self._settings.openai_model}"
         if provider_id == "gemini":
             return f"Gemini {self._settings.gemini_model}"
+        if provider_id == "ollama":
+            return f"Ollama {self._settings.ollama_model}"
         return "Unavailable provider"

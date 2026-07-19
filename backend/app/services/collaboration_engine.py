@@ -1,7 +1,8 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from uuid import uuid4
 
+from app.schemas.artifact import ArtifactCollection
 from app.schemas.collaboration import (
     CollaborationContext,
     CollaborationMessageDraft,
@@ -9,7 +10,6 @@ from app.schemas.collaboration import (
     ConversationMessage,
     WorkerConversation,
 )
-from app.schemas.artifact import ArtifactCollection
 from app.schemas.memory import MemoryEntry, OrganizationMemory
 from app.schemas.task_generator import Task
 from app.schemas.worker_assignment import AIWorker
@@ -17,13 +17,14 @@ from app.schemas.worker_assignment import AIWorker
 CONTEXT_ARTIFACT_LIMIT = 12
 CONTEXT_CONVERSATION_LIMIT = 24
 CONTEXT_DECISION_LIMIT = 12
+MEMORY_CONTENT_LIMIT = 1200
 
 
 class CollaborationEngine:
     """Build communication context and preserve worker conversations outside execution logic."""
 
     def create_session(self) -> CollaborationSession:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return CollaborationSession(
             session_id=f"collaboration-{uuid4().hex[:12]}",
             conversations=[],
@@ -70,7 +71,7 @@ class CollaborationEngine:
     ) -> CollaborationSession:
         """Add one provider-authored message to the appropriate execution-phase thread."""
 
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         message = ConversationMessage(
             message_id=self._message_id(session, task, worker, timestamp),
             session_id=session.session_id,
@@ -119,6 +120,11 @@ class CollaborationEngine:
             if memory_id in existing_ids or len(entries) >= 256:
                 continue
 
+            memory_content = (
+                f"Session: {message.session_id}\n"
+                f"Sender: {message.sender_worker_id}\n"
+                f"Message: {message.content}"
+            )[:MEMORY_CONTENT_LIMIT]
             entries.append(
                 MemoryEntry(
                     memory_id=memory_id,
@@ -127,11 +133,7 @@ class CollaborationEngine:
                     department=message.sender_department,
                     title=f"Collaboration: {message.message_type}",
                     summary=message.content,
-                    content=(
-                        f"Session: {message.session_id}\n"
-                        f"Sender: {message.sender_worker_id}\n"
-                        f"Message: {message.content}"
-                    ),
+                    content=memory_content,
                     timestamp=message.timestamp,
                     tags=["collaboration", message.message_type, message.sender_department.lower()],
                 )

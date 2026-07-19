@@ -389,7 +389,13 @@ export function MissionDashboard(): React.JSX.Element {
               value={
                 dashboard.verification.status === "pending"
                   ? "Awaiting verification"
-                  : dashboard.verification.status
+                  : dashboard.verification.status === "failed"
+                    ? "Verification Failed"
+                    : dashboard.verification.implementationLevel === "foundation"
+                      ? "Foundation Verified"
+                      : dashboard.verification.implementationLevel === "partial"
+                        ? "Partial Implementation Verified"
+                        : "Complete Implementation Verified"
               }
             />
             <MetricCard

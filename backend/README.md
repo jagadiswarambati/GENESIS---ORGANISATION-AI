@@ -7,7 +7,10 @@ The FastAPI service for Genesis organization design and execution capabilities.
 - `GENESIS_AI_PROVIDER=mock` selects the local deterministic execution provider.
 - `GENESIS_AI_PROVIDER=openai` selects the OpenAI Responses API provider.
 - `GENESIS_AI_PROVIDER=gemini` selects the Google Gemini API provider.
+- `GENESIS_AI_PROVIDER=ollama` selects the local Ollama HTTP provider.
 - `OPENAI_API_KEY` is required only for the OpenAI provider.
 - `GENESIS_OPENAI_MODEL` defaults to `gpt-5.6` and selects the Responses API model.
 - `GEMINI_API_KEY` is required only for the Gemini provider.
 - `GENESIS_GEMINI_MODEL` defaults to `gemini-3.5-flash`.
+- `GENESIS_OLLAMA_BASE_URL` defaults to `http://localhost:11434`.
+- `GENESIS_OLLAMA_MODEL` defaults to `llama3.2:3b`.

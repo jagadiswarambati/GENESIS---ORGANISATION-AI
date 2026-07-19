@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -8,6 +9,7 @@ from app.services.collaboration_engine import CollaborationEngine
 from app.services.collaborative_execution import CollaborativeExecutionService
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_collaborative_execution_service() -> CollaborativeExecutionService:
@@ -24,4 +26,12 @@ async def execute_collaboratively(
 ) -> CollaborativeExecutionResult:
     """Coordinate worker communication, then execute Ready tasks through the existing engine."""
 
-    return await service.execute_ready_tasks(request)
+    try:
+        return await service.execute_ready_tasks(request)
+    except Exception as error:
+        logger.exception(
+            "Collaborative execution endpoint failed: exception_type=%s exception_message=%s",
+            type(error).__name__,
+            str(error),
+        )
+        raise

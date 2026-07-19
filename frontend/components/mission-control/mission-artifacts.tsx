@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion as motionElement } from "framer-motion";
 import { useState } from "react";
 
 import { Badge } from "@/components/design-system/badge";
@@ -9,7 +10,9 @@ import { Dialog, DialogFooter } from "@/components/design-system/dialog";
 import { NotificationToast } from "@/components/design-system/feedback";
 import type { ArtifactCollection, MissionArtifact } from "@/lib/api/artifacts";
 import type { WorkerAssignmentResult } from "@/lib/api/worker-assignment";
+import { icons } from "@/lib/icons";
 import { formatMissionControlTime } from "@/lib/mission-control-session";
+import { slideUp } from "@/lib/motion";
 
 function ArtifactViewer({
   artifact,
@@ -102,9 +105,11 @@ function ArtifactViewer({
 
 export function MissionArtifacts({
   artifactCollection,
+  isGenerating,
   workerAssignmentResult,
 }: Readonly<{
   artifactCollection?: ArtifactCollection;
+  isGenerating?: boolean;
   workerAssignmentResult?: WorkerAssignmentResult;
 }>): React.JSX.Element {
   const artifacts = artifactCollection?.artifacts ?? [];
@@ -112,20 +117,34 @@ export function MissionArtifacts({
   if (!artifacts.length) {
     return (
       <div className="border-border bg-surface mt-6 flex min-h-32 items-center justify-center rounded-lg border border-dashed">
-        <span className="text-body text-secondary">No artifacts generated.</span>
+        {isGenerating ? (
+          <span className="text-body text-secondary inline-flex items-center gap-2">
+            <icons.loading aria-hidden="true" className="animate-soft-spin" size={16} />
+            Generating mission artifacts...
+          </span>
+        ) : (
+          <span className="text-body text-secondary">No artifacts generated.</span>
+        )}
       </div>
     );
   }
 
   return (
     <ol className="mt-6 space-y-3">
-      {[...artifacts]
-        .sort((left, right) => right.generated_at.localeCompare(left.generated_at))
-        .map((artifact) => (
-          <li key={artifact.artifact_id}>
-            <ArtifactViewer artifact={artifact} workerAssignmentResult={workerAssignmentResult} />
-          </li>
-        ))}
+      <AnimatePresence initial={false}>
+        {[...artifacts]
+          .sort((left, right) => right.generated_at.localeCompare(left.generated_at))
+          .map((artifact) => (
+            <motionElement.li
+              animate="visible"
+              initial="hidden"
+              key={artifact.artifact_id}
+              variants={slideUp}
+            >
+              <ArtifactViewer artifact={artifact} workerAssignmentResult={workerAssignmentResult} />
+            </motionElement.li>
+          ))}
+      </AnimatePresence>
     </ol>
   );
 }

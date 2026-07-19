@@ -9,8 +9,8 @@ class ArchitectError(Exception):
 class ArchitectConfigurationError(ArchitectError):
     code = "organization_architect_unavailable"
     message = (
-        "The Organization Architect requires the configured provider API key. "
-        "Configure OPENAI_API_KEY or GEMINI_API_KEY and try again."
+        "The Organization Architect provider is not configured. Configure its required "
+        "credentials or local runtime, then try again."
     )
     status_code = 503
 
@@ -23,10 +23,7 @@ class ArchitectProviderError(ArchitectError):
 
 class ArchitectModelUnavailableError(ArchitectError):
     code = "organization_architect_model_unavailable"
-    message = (
-        "The configured Gemini model is unavailable. Set GENESIS_GEMINI_MODEL to a supported "
-        "model and try again."
-    )
+    message = "The configured AI model is unavailable. Update the model setting and try again."
     status_code = 503
 
 
@@ -51,6 +48,28 @@ class ArchitectValidationError(ArchitectError):
     status_code = 502
 
 
+class OllamaUnavailableError(ArchitectError):
+    code = "organization_architect_ollama_unavailable"
+    message = (
+        "Ollama is not running or is not reachable at GENESIS_OLLAMA_BASE_URL. "
+        "Start Ollama and try again."
+    )
+    status_code = 503
+
+
+class OllamaModelUnavailableError(ArchitectError):
+    code = "organization_architect_ollama_model_unavailable"
+    message = (
+        "The configured Ollama model is not installed. Install GENESIS_OLLAMA_MODEL and try again."
+    )
+    status_code = 503
+
+
+class OllamaInvalidJsonError(ArchitectValidationError):
+    code = "organization_architect_ollama_invalid_response"
+    message = "Ollama returned an invalid organization blueprint after a retry."
+
+
 class ExecutionProviderError(Exception):
     """Expected failure while selecting or calling the configured execution provider."""
 
@@ -63,7 +82,7 @@ class ExecutionProviderConfigurationError(ExecutionProviderError):
     code = "execution_provider_configuration_error"
     message = (
         "The selected provider is not configured. Set the applicable API key "
-        "(OPENAI_API_KEY or GEMINI_API_KEY), or choose Mock AI."
+        "(OPENAI_API_KEY or GEMINI_API_KEY), configure Ollama, or choose Mock AI."
     )
     status_code = 503
 
@@ -72,6 +91,17 @@ class ExecutionProviderUnavailableError(ExecutionProviderError):
     code = "execution_provider_unavailable"
     message = "The selected execution provider is temporarily unavailable."
     status_code = 502
+
+
+class CollaborativeExecutionDeferredError(ExecutionProviderError):
+    """Collaborative enrichment exceeded its background time budget."""
+
+    code = "collaborative_execution_deferred"
+    message = (
+        "Large collaborative artifacts are still being generated. You can continue using "
+        "Genesis while generation resumes in the background."
+    )
+    status_code = 504
 
 
 class ProjectReviewError(Exception):
@@ -86,7 +116,7 @@ class ProjectReviewConfigurationError(ProjectReviewError):
     code = "project_review_configuration_error"
     message = (
         "The configured project reviewer requires its provider API key. "
-        "Use Mock AI or configure OPENAI_API_KEY or GEMINI_API_KEY."
+        "Use Mock AI, configure OPENAI_API_KEY or GEMINI_API_KEY, or configure Ollama."
     )
     status_code = 503
 
@@ -95,6 +125,14 @@ class ProjectReviewProviderUnavailableError(ProjectReviewError):
     code = "project_review_provider_unavailable"
     message = "The selected project review provider is temporarily unavailable."
     status_code = 502
+
+
+class ProjectReviewDeferredError(ProjectReviewError):
+    """The optional project review exceeded its background time budget."""
+
+    code = "project_review_deferred"
+    message = "Project Review is still being prepared in the background."
+    status_code = 504
 
 
 class ProjectReviewValidationError(ProjectReviewError):

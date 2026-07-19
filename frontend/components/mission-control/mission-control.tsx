@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AnimatePresence, motion as motionElement } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 
 import { Badge, Chip } from "@/components/design-system/badge";
@@ -13,6 +14,7 @@ import {
 } from "@/components/design-system/feedback";
 import { PageContainer, SectionHeader, TopNavigation } from "@/components/design-system/layout";
 import { TimelineCard } from "@/components/design-system/organization";
+import { ProgressBar } from "@/components/design-system/progress";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { MissionArtifacts } from "@/components/mission-control/mission-artifacts";
 import { ProjectExportPanel } from "@/components/mission-control/project-export";
@@ -22,12 +24,12 @@ import { ProjectReviewPanel } from "@/components/mission-control/project-review"
 import { ProjectDeploymentPanel } from "@/components/mission-control/project-deployment";
 import { ProjectWorkspacePanel } from "@/components/mission-control/project-workspace";
 import { TeamCollaboration } from "@/components/mission-control/team-collaboration";
+import { type ArtifactCollection, requestArtifacts } from "@/lib/api/artifacts";
 import {
-  ArtifactGenerationApiError,
-  type ArtifactCollection,
-  requestArtifacts,
-} from "@/lib/api/artifacts";
-import { CollaborationApiError, executeCollaborativeReadyTasks } from "@/lib/api/collaboration";
+  CollaborationApiError,
+  type CollaborativeExecutionResult,
+  executeCollaborativeReadyTasks,
+} from "@/lib/api/collaboration";
 import { ExecutionPlannerApiError, requestExecutionPlan } from "@/lib/api/execution-planner";
 import {
   type ExecutionResult,
@@ -77,6 +79,7 @@ import {
 } from "@/lib/api/deployment";
 import { requestSystemHealth, SystemHealthApiError } from "@/lib/api/system-health";
 import { icons } from "@/lib/icons";
+import { slideUp } from "@/lib/motion";
 import { createPackageManifestContext } from "@/lib/package-manifest";
 import { createProjectValidationInput } from "@/lib/project-validation";
 import { createProjectVerificationInput } from "@/lib/project-verification";
@@ -103,6 +106,103 @@ import {
 } from "@/lib/mission-control-session";
 
 type SessionState = MissionControlSession | null | undefined;
+type BackgroundStageStatus = "active" | "complete" | "deferred" | "pending" | "waiting" | "error";
+
+type BackgroundStage = {
+  description: string;
+  label: string;
+  status: BackgroundStageStatus;
+};
+
+async function retryOnce<Result>(operation: () => Promise<Result>): Promise<Result | undefined> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (isDeferredCollaborationError(error)) throw error;
+
+    try {
+      return await operation();
+    } catch (retryError) {
+      if (isDeferredCollaborationError(retryError)) throw retryError;
+
+      return undefined;
+    }
+  }
+}
+
+function isDeferredCollaborationError(error: unknown): error is CollaborationApiError {
+  return (
+    error instanceof CollaborationApiError && error.code === "collaborative_execution_deferred"
+  );
+}
+
+function BackgroundGenerationProgress({
+  stages,
+}: Readonly<{ stages: BackgroundStage[] }>): React.JSX.Element {
+  const completedStageCount = stages.filter((stage) => stage.status === "complete").length;
+  const progress = Math.round((completedStageCount / stages.length) * 100);
+
+  return (
+    <Panel aria-live="polite" className="mt-6 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-label text-muted">Organization formation</p>
+          <h2 className="text-title mt-1">Building the operating system in the background</h2>
+          <p className="text-caption text-secondary mt-2">
+            Explore the blueprint while Genesis prepares the deeper execution layers.
+          </p>
+        </div>
+        <Badge tone={progress === 100 ? "success" : "info"}>
+          {progress === 100 ? "Organization ready" : "Background generation"}
+        </Badge>
+      </div>
+      <ProgressBar className="mt-5" label="Preparation progress" value={progress} />
+      <ol className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <AnimatePresence initial={false}>
+          {stages.map((stage) => {
+            const Icon =
+              stage.status === "complete"
+                ? icons.complete
+                : stage.status === "error"
+                  ? icons.alert
+                  : stage.status === "active"
+                    ? icons.loading
+                    : icons.pending;
+            const tone =
+              stage.status === "complete"
+                ? "success"
+                : stage.status === "error"
+                  ? "danger"
+                  : "info";
+
+            return (
+              <motionElement.li
+                animate="visible"
+                className="border-border bg-surface rounded-lg border p-3"
+                initial="hidden"
+                key={stage.label}
+                variants={slideUp}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon
+                    aria-hidden="true"
+                    className={stage.status === "active" ? "animate-soft-spin" : undefined}
+                    size={16}
+                  />
+                  <p className="text-body font-medium">{stage.label}</p>
+                  <Badge className="ml-auto capitalize" tone={tone}>
+                    {stage.status}
+                  </Badge>
+                </div>
+                <p className="text-caption text-secondary mt-2">{stage.description}</p>
+              </motionElement.li>
+            );
+          })}
+        </AnimatePresence>
+      </ol>
+    </Panel>
+  );
+}
 
 function SummaryCard({
   children,
@@ -243,6 +343,8 @@ function TaskArtifactAttachment({
 export function MissionControl(): React.JSX.Element {
   const [session, setSession] = useState<SessionState>(undefined);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [autoPlanningAttempted, setAutoPlanningAttempted] = useState(false);
+  const [autoExecutionSignature, setAutoExecutionSignature] = useState<string | null>(null);
   const [plannerError, setPlannerError] = useState<string | null>(null);
   const [isGeneratingTasks, setIsGeneratingTasks] = useState(false);
   const [taskGenerationAttempted, setTaskGenerationAttempted] = useState(false);
@@ -254,8 +356,13 @@ export function MissionControl(): React.JSX.Element {
   const [workflowAttempted, setWorkflowAttempted] = useState(false);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
   const [isExecutingReadyTasks, setIsExecutingReadyTasks] = useState(false);
-  const [executionError, setExecutionError] = useState<string | null>(null);
-  const [artifactGenerationError, setArtifactGenerationError] = useState<string | null>(null);
+  const [isAiWorkSlow, setIsAiWorkSlow] = useState(false);
+  const [isAiWorkPending, setIsAiWorkPending] = useState(false);
+  const [isCollaborativeExecutionDeferred, setIsCollaborativeExecutionDeferred] = useState(false);
+  const [deferredExecutionSignature, setDeferredExecutionSignature] = useState<string | null>(null);
+  const [automaticDeferredRetrySignature, setAutomaticDeferredRetrySignature] = useState<
+    string | null
+  >(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [workspaceErrorArtifactCount, setWorkspaceErrorArtifactCount] = useState<number | null>(
     null,
@@ -274,6 +381,9 @@ export function MissionControl(): React.JSX.Element {
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [verificationErrorPackageId, setVerificationErrorPackageId] = useState<string | null>(null);
   const [isReviewingProject, setIsReviewingProject] = useState(false);
+  const [autoReviewWorkspaceUpdatedAt, setAutoReviewWorkspaceUpdatedAt] = useState<string | null>(
+    null,
+  );
   const [isRefiningProject, setIsRefiningProject] = useState(false);
   const [projectReviewError, setProjectReviewError] = useState<string | null>(null);
   const [isGeneratingDeployment, setIsGeneratingDeployment] = useState(false);
@@ -284,7 +394,6 @@ export function MissionControl(): React.JSX.Element {
   >("mission");
   const [providerHealth, setProviderHealth] = useState<ProviderHealth | undefined>(undefined);
   const [providerError, setProviderError] = useState<string | null>(null);
-  const [startupMessages, setStartupMessages] = useState<string[]>([]);
   const BrandIcon = icons.organization;
 
   useEffect(() => setSession(readMissionControlSession()), []);
@@ -296,7 +405,6 @@ export function MissionControl(): React.JSX.Element {
         setProviderError(
           health.active_ai_provider.is_healthy ? null : health.active_ai_provider.error,
         );
-        setStartupMessages(health.startup_messages);
       })
       .catch((error: unknown) => {
         setProviderError(
@@ -306,6 +414,16 @@ export function MissionControl(): React.JSX.Element {
         );
       });
   }, []);
+
+  useEffect(() => {
+    if (!isExecutingReadyTasks) {
+      setIsAiWorkSlow(false);
+      return;
+    }
+
+    const slowGenerationTimer = window.setTimeout(() => setIsAiWorkSlow(true), 30_000);
+    return () => window.clearTimeout(slowGenerationTimer);
+  }, [isExecutingReadyTasks]);
 
   useEffect(() => {
     if (
@@ -318,21 +436,16 @@ export function MissionControl(): React.JSX.Element {
       return;
     }
 
-    let cancelled = false;
     setTaskGenerationAttempted(true);
     setIsGeneratingTasks(true);
     setTaskGeneratorError(null);
 
     void requestTaskGroups(session.executionPlan)
       .then((taskGroups) => {
-        if (cancelled) return;
-
         const updatedSession = saveTaskGroups(taskGroups);
         setSession(updatedSession ?? { ...session, taskGroups });
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
-
         const message =
           error instanceof TaskGeneratorApiError
             ? error.message
@@ -340,12 +453,8 @@ export function MissionControl(): React.JSX.Element {
         setTaskGeneratorError(message);
       })
       .finally(() => {
-        if (!cancelled) setIsGeneratingTasks(false);
+        setIsGeneratingTasks(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [session, taskGenerationAttempted]);
 
   useEffect(() => {
@@ -359,21 +468,16 @@ export function MissionControl(): React.JSX.Element {
       return;
     }
 
-    let cancelled = false;
     setWorkerAssignmentAttempted(true);
     setIsAssigningWorkers(true);
     setWorkerAssignmentError(null);
 
     void requestWorkerAssignments(session.taskGroups)
       .then((workerAssignmentResult) => {
-        if (cancelled) return;
-
         const updatedSession = saveWorkerAssignmentResult(workerAssignmentResult);
         setSession(updatedSession ?? { ...session, workerAssignmentResult });
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
-
         const message =
           error instanceof WorkerAssignmentApiError
             ? error.message
@@ -381,12 +485,8 @@ export function MissionControl(): React.JSX.Element {
         setWorkerAssignmentError(message);
       })
       .finally(() => {
-        if (!cancelled) setIsAssigningWorkers(false);
+        setIsAssigningWorkers(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [session, workerAssignmentAttempted]);
 
   useEffect(() => {
@@ -401,21 +501,16 @@ export function MissionControl(): React.JSX.Element {
       return;
     }
 
-    let cancelled = false;
     setWorkflowAttempted(true);
     setIsInitializingWorkflow(true);
     setWorkflowError(null);
 
     void requestWorkflow(session.taskGroups)
       .then((workflow) => {
-        if (cancelled) return;
-
         const updatedSession = saveWorkflow(workflow);
         setSession(updatedSession ?? { ...session, workflow });
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
-
         const message =
           error instanceof WorkflowApiError
             ? error.message
@@ -423,12 +518,8 @@ export function MissionControl(): React.JSX.Element {
         setWorkflowError(message);
       })
       .finally(() => {
-        if (!cancelled) setIsInitializingWorkflow(false);
+        setIsInitializingWorkflow(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [session, workflowAttempted]);
 
   useEffect(() => {
@@ -471,8 +562,8 @@ export function MissionControl(): React.JSX.Element {
 
         const message =
           error instanceof WorkspaceApiError
-            ? error.message
-            : "Genesis could not assemble the project workspace. Please try again.";
+            ? `Workspace generation is deferred. ${error.message}`
+            : "Workspace generation is deferred while Genesis continues preparing other sections.";
         setWorkspaceError(message);
         setWorkspaceErrorArtifactCount(session.artifactCollection?.artifacts.length ?? null);
       })
@@ -514,8 +605,8 @@ export function MissionControl(): React.JSX.Element {
       } catch (error) {
         const message =
           error instanceof ProjectPackagingApiError
-            ? error.message
-            : "Genesis could not package the project workspace. Please try again.";
+            ? `Project export is deferred. ${error.message}`
+            : "Project export is deferred while Genesis continues preparing other sections.";
         setPackageError(message);
         setPackageErrorWorkspaceUpdatedAt(packagingSession.projectWorkspace.last_updated);
         return null;
@@ -539,8 +630,8 @@ export function MissionControl(): React.JSX.Element {
       } catch (error) {
         const message =
           error instanceof ProjectValidationApiError
-            ? error.message
-            : "Genesis could not validate the project workspace. Please try again.";
+            ? `Validation is deferred. ${error.message}`
+            : "Validation is deferred while Genesis continues preparing other sections.";
         setValidationError(message);
         setValidationErrorPackageId(validationInput.projectPackage.package_id);
         return null;
@@ -564,8 +655,8 @@ export function MissionControl(): React.JSX.Element {
       } catch (error) {
         const message =
           error instanceof ProjectVerificationApiError
-            ? error.message
-            : "Genesis could not verify the project package. Please try again.";
+            ? `Sandbox verification is deferred. ${error.message}`
+            : "Sandbox verification is deferred while Genesis continues preparing other sections.";
         setVerificationError(message);
         setVerificationErrorPackageId(verificationInput.projectPackage.package_id);
         return null;
@@ -588,8 +679,8 @@ export function MissionControl(): React.JSX.Element {
       } catch (error) {
         const message =
           error instanceof ProjectReviewApiError
-            ? error.message
-            : "Genesis could not review the generated project. Please try again.";
+            ? `Project Review is deferred. ${error.message}`
+            : "Project Review is deferred while Genesis continues preparing other sections.";
         setProjectReviewError(message);
         return null;
       }
@@ -612,11 +703,130 @@ export function MissionControl(): React.JSX.Element {
       } catch (error) {
         const message =
           error instanceof DeploymentGenerationApiError
-            ? error.message
-            : "Genesis could not generate deployment assets. Please try again.";
+            ? `Deployment generation is deferred. ${error.message}`
+            : "Deployment generation is deferred while Genesis continues preparing other sections.";
         setDeploymentError(message);
         setDeploymentErrorPackageId(deploymentInput.projectPackage.package_id);
         return null;
+      }
+    },
+    [],
+  );
+
+  const initializeExecutionPlan = useCallback(
+    async (planningSession: MissionControlSession): Promise<void> => {
+      if (planningSession.executionPlan) return;
+
+      setIsInitializing(true);
+      setPlannerError(null);
+
+      try {
+        const plan = await requestExecutionPlan(planningSession.blueprint);
+        const updatedSession = saveExecutionPlan(plan);
+        setSession(updatedSession ?? { ...planningSession, executionPlan: plan });
+      } catch (error) {
+        const message =
+          error instanceof ExecutionPlannerApiError
+            ? error.message
+            : "Genesis could not create an execution plan. Please try again.";
+        setPlannerError(message);
+      } finally {
+        setIsInitializing(false);
+      }
+    },
+    [],
+  );
+
+  const executeReadyTasks = useCallback(
+    async (executionSession: MissionControlSession): Promise<void> => {
+      const { artifactCollection, collaborationSession, organizationMemory, taskGroups } =
+        executionSession;
+      const workerAssignmentResult = executionSession.workerAssignmentResult;
+      const workflow = executionSession.workflow;
+      const readyTaskCount =
+        workflow?.task_states.filter((state) => state.status === "ready").length ?? 0;
+      if (!workflow || !taskGroups || !workerAssignmentResult || readyTaskCount === 0) return;
+      const readyTaskSignature = workflow.task_states
+        .filter((state) => state.status === "ready")
+        .map((state) => state.task_id)
+        .sort()
+        .join(",");
+
+      setIsExecutingReadyTasks(true);
+      setIsAiWorkSlow(false);
+      setIsAiWorkPending(false);
+      setIsCollaborativeExecutionDeferred(false);
+
+      try {
+        let collaborationResult: CollaborativeExecutionResult | undefined;
+        try {
+          collaborationResult = await retryOnce(() =>
+            executeCollaborativeReadyTasks({
+              artifactCollection,
+              collaborationSession,
+              organizationMemory,
+              taskGroups,
+              workerAssignmentResult,
+              workflow,
+            }),
+          );
+        } catch (error) {
+          if (isDeferredCollaborationError(error)) {
+            setDeferredExecutionSignature(readyTaskSignature);
+            setIsCollaborativeExecutionDeferred(true);
+            return;
+          }
+
+          setIsAiWorkPending(true);
+          return;
+        }
+        if (!collaborationResult) {
+          setIsAiWorkPending(true);
+          return;
+        }
+
+        const executionResult = collaborationResult.execution_result;
+        const updatedSession = saveExecutionResult(executionResult);
+        const sessionWithExecution = updatedSession ?? {
+          ...executionSession,
+          executionHistory: [...(executionSession.executionHistory ?? []), executionResult],
+          organizationMemory: executionResult.organization_memory,
+          workflow: executionResult.workflow,
+        };
+        const savedCollaborationSession = saveCollaborationSession(
+          collaborationResult.collaboration_session,
+        );
+        const sessionWithCollaboration = savedCollaborationSession ?? {
+          ...sessionWithExecution,
+          collaborationSession: collaborationResult.collaboration_session,
+        };
+        setSession(sessionWithCollaboration);
+
+        const artifactResult = await retryOnce(() =>
+          requestArtifacts({
+            executionResult,
+            taskGroups,
+            workerAssignmentResult,
+          }),
+        );
+        if (!artifactResult) {
+          setIsAiWorkPending(true);
+          return;
+        }
+
+        const sessionWithArtifacts = saveArtifactCollection(
+          artifactResult.artifact_collection,
+          artifactResult.organization_memory,
+        );
+        setSession(
+          sessionWithArtifacts ?? {
+            ...sessionWithCollaboration,
+            artifactCollection: artifactResult.artifact_collection,
+            organizationMemory: artifactResult.organization_memory,
+          },
+        );
+      } finally {
+        setIsExecutingReadyTasks(false);
       }
     },
     [],
@@ -696,6 +906,99 @@ export function MissionControl(): React.JSX.Element {
     void generateDeployment(session).finally(() => setIsGeneratingDeployment(false));
   }, [deploymentErrorPackageId, generateDeployment, isGeneratingDeployment, session]);
 
+  useEffect(() => {
+    if (
+      session === undefined ||
+      session === null ||
+      session.executionPlan ||
+      isInitializing ||
+      autoPlanningAttempted
+    ) {
+      return;
+    }
+
+    setAutoPlanningAttempted(true);
+    void initializeExecutionPlan(session);
+  }, [autoPlanningAttempted, initializeExecutionPlan, isInitializing, session]);
+
+  useEffect(() => {
+    if (session === undefined || session === null || isExecutingReadyTasks) return;
+
+    const readyTaskIds = session.workflow?.task_states
+      .filter((state) => state.status === "ready")
+      .map((state) => state.task_id)
+      .sort();
+    const readyTaskSignature = readyTaskIds?.join(",") ?? "";
+    if (
+      !readyTaskSignature ||
+      readyTaskSignature === autoExecutionSignature ||
+      !session.taskGroups ||
+      !session.workerAssignmentResult
+    ) {
+      return;
+    }
+
+    setAutoExecutionSignature(readyTaskSignature);
+    void executeReadyTasks(session);
+  }, [autoExecutionSignature, executeReadyTasks, isExecutingReadyTasks, session]);
+
+  useEffect(() => {
+    if (
+      session === undefined ||
+      session === null ||
+      !isCollaborativeExecutionDeferred ||
+      !deferredExecutionSignature ||
+      deferredExecutionSignature === automaticDeferredRetrySignature ||
+      isExecutingReadyTasks
+    ) {
+      return;
+    }
+
+    const readyTaskSignature = session.workflow?.task_states
+      .filter((state) => state.status === "ready")
+      .map((state) => state.task_id)
+      .sort()
+      .join(",");
+    if (
+      readyTaskSignature !== deferredExecutionSignature ||
+      !session.taskGroups ||
+      !session.workerAssignmentResult
+    ) {
+      return;
+    }
+
+    const retryTimer = window.setTimeout(() => {
+      setAutomaticDeferredRetrySignature(deferredExecutionSignature);
+      void executeReadyTasks(session);
+    }, 1_000);
+    return () => window.clearTimeout(retryTimer);
+  }, [
+    automaticDeferredRetrySignature,
+    deferredExecutionSignature,
+    executeReadyTasks,
+    isCollaborativeExecutionDeferred,
+    isExecutingReadyTasks,
+    session,
+  ]);
+
+  useEffect(() => {
+    if (
+      session === undefined ||
+      session === null ||
+      !session.projectWorkspace ||
+      isReviewingProject ||
+      session.projectReview?.source_workspace_updated_at ===
+        session.projectWorkspace.last_updated ||
+      autoReviewWorkspaceUpdatedAt === session.projectWorkspace.last_updated
+    ) {
+      return;
+    }
+
+    setAutoReviewWorkspaceUpdatedAt(session.projectWorkspace.last_updated);
+    setIsReviewingProject(true);
+    void reviewProject(session).finally(() => setIsReviewingProject(false));
+  }, [autoReviewWorkspaceUpdatedAt, isReviewingProject, reviewProject, session]);
+
   if (session === undefined) {
     return (
       <main className="bg-background flex min-h-screen items-center justify-center">
@@ -745,6 +1048,142 @@ export function MissionControl(): React.JSX.Element {
   );
   const readyTaskCount =
     workflow?.task_states.filter((state) => state.status === "ready").length ?? 0;
+  const backgroundStages: BackgroundStage[] = [
+    {
+      label: "Execution timeline",
+      description: executionPlan
+        ? "Department phases are available to explore."
+        : "Sequencing departments from the approved blueprint.",
+      status: plannerError ? "error" : executionPlan ? "complete" : "active",
+    },
+    {
+      label: "Tasks and workers",
+      description: workflow
+        ? "Tasks, dependencies, and worker assignments are live."
+        : "Preparing task groups and specialist assignments.",
+      status:
+        taskGeneratorError || workerAssignmentError || workflowError
+          ? "error"
+          : workflow
+            ? "complete"
+            : executionPlan
+              ? "active"
+              : "waiting",
+    },
+    {
+      label: "AI work and artifacts",
+      description: artifactCollection?.artifacts.length
+        ? isExecutingReadyTasks
+          ? `${artifactCollection.artifacts.length} project foundation artifacts are available while the remaining work continues in the background.`
+          : `${artifactCollection.artifacts.length} project foundation artifacts are available.`
+        : isCollaborativeExecutionDeferred
+          ? "Large collaborative artifacts are still being generated. You can continue using Genesis while generation resumes in the background."
+          : isAiWorkPending
+            ? "Will retry automatically."
+            : isAiWorkSlow
+              ? "Generation is continuing in the background. Completed artifacts will appear here immediately."
+              : "Workers will produce mission artifacts as phases become ready.",
+      status: isExecutingReadyTasks
+        ? "active"
+        : artifactCollection?.artifacts.length
+          ? "complete"
+          : isCollaborativeExecutionDeferred
+            ? "deferred"
+            : isAiWorkPending
+              ? "pending"
+              : "waiting",
+    },
+    {
+      label: "Workspace",
+      description: workspaceError
+        ? "Deferred. Existing artifacts remain available while this repository build is retried."
+        : projectWorkspace
+          ? "Project foundation is organized into a browseable repository."
+          : "Organizing the completed project foundation.",
+      status: workspaceError
+        ? "deferred"
+        : projectWorkspace
+          ? "complete"
+          : isGeneratingWorkspace
+            ? "active"
+            : "waiting",
+    },
+    {
+      label: "Project export",
+      description: packageError
+        ? "Deferred. The workspace remains available while packaging is retried."
+        : projectPackage
+          ? "Portable project package is ready."
+          : "Packaging the available repository foundation.",
+      status: packageError
+        ? "deferred"
+        : projectPackage
+          ? "complete"
+          : isPackagingProject
+            ? "active"
+            : "waiting",
+    },
+    {
+      label: "Validation",
+      description: validationError
+        ? "Deferred. Other workspace sections continue independently."
+        : validationReport
+          ? "Structural project checks are complete."
+          : "Checking the current project structure.",
+      status: validationError
+        ? "deferred"
+        : validationReport
+          ? "complete"
+          : isValidatingProject
+            ? "active"
+            : "waiting",
+    },
+    {
+      label: "Sandbox verification",
+      description: verificationError
+        ? "Deferred. Other workspace sections continue independently."
+        : verificationReport
+          ? "Foundation verification is complete."
+          : "Verifying the package structure safely.",
+      status: verificationError
+        ? "deferred"
+        : verificationReport
+          ? "complete"
+          : isVerifyingProject
+            ? "active"
+            : "waiting",
+    },
+    {
+      label: "Project review",
+      description: projectReviewError
+        ? "Deferred. Existing workspace and quality results remain available."
+        : isProjectReviewCurrent
+          ? "A focused review is available for this workspace revision."
+          : "Reviewing the current workspace independently.",
+      status: projectReviewError
+        ? "deferred"
+        : isProjectReviewCurrent
+          ? "complete"
+          : isReviewingProject
+            ? "active"
+            : "waiting",
+    },
+    {
+      label: "Deployment",
+      description: deploymentError
+        ? "Deferred. The package remains available for export."
+        : deploymentPlan
+          ? "Deployment runtime assets are ready."
+          : "Preparing the deployment overlay from the package.",
+      status: deploymentError
+        ? "deferred"
+        : deploymentPlan
+          ? "complete"
+          : isGeneratingDeployment
+            ? "active"
+            : "waiting",
+    },
+  ];
 
   async function requestVerifiedPackage(): Promise<ExportBundle | null> {
     if (
@@ -863,91 +1302,11 @@ export function MissionControl(): React.JSX.Element {
 
   async function initializeExecution(): Promise<void> {
     if (executionPlan || isInitializing) return;
-
-    setIsInitializing(true);
-    setPlannerError(null);
-
-    try {
-      const plan = await requestExecutionPlan(blueprint);
-      const updatedSession = saveExecutionPlan(plan);
-      setSession(updatedSession ?? { ...activeSession, executionPlan: plan });
-    } catch (error) {
-      const message =
-        error instanceof ExecutionPlannerApiError
-          ? error.message
-          : "Genesis could not create an execution plan. Please try again.";
-      setPlannerError(message);
-    } finally {
-      setIsInitializing(false);
-    }
+    await initializeExecutionPlan(activeSession);
   }
 
   async function runReadyTasks(): Promise<void> {
-    if (!workflow || !taskGroups || !workerAssignmentResult || readyTaskCount === 0) return;
-
-    setIsExecutingReadyTasks(true);
-    setExecutionError(null);
-    setArtifactGenerationError(null);
-
-    try {
-      const collaborationResult = await executeCollaborativeReadyTasks({
-        artifactCollection,
-        collaborationSession,
-        organizationMemory,
-        taskGroups,
-        workerAssignmentResult,
-        workflow,
-      });
-      const executionResult = collaborationResult.execution_result;
-      const updatedSession = saveExecutionResult(executionResult);
-      const sessionWithExecution = updatedSession ?? {
-        ...activeSession,
-        executionHistory: [...(activeSession.executionHistory ?? []), executionResult],
-        organizationMemory: executionResult.organization_memory,
-        workflow: executionResult.workflow,
-      };
-      const savedCollaborationSession = saveCollaborationSession(
-        collaborationResult.collaboration_session,
-      );
-      const sessionWithCollaboration = savedCollaborationSession ?? {
-        ...sessionWithExecution,
-        collaborationSession: collaborationResult.collaboration_session,
-      };
-      setSession(sessionWithCollaboration);
-
-      try {
-        const artifactResult = await requestArtifacts({
-          executionResult,
-          taskGroups,
-          workerAssignmentResult,
-        });
-        const sessionWithArtifacts = saveArtifactCollection(
-          artifactResult.artifact_collection,
-          artifactResult.organization_memory,
-        );
-        setSession(
-          sessionWithArtifacts ?? {
-            ...sessionWithCollaboration,
-            artifactCollection: artifactResult.artifact_collection,
-            organizationMemory: artifactResult.organization_memory,
-          },
-        );
-      } catch (artifactError) {
-        const message =
-          artifactError instanceof ArtifactGenerationApiError
-            ? artifactError.message
-            : "Genesis could not generate mission artifacts. Please try again.";
-        setArtifactGenerationError(message);
-      }
-    } catch (error) {
-      const message =
-        error instanceof CollaborationApiError
-          ? error.message
-          : "Genesis could not coordinate the ready tasks. Please try again.";
-      setExecutionError(message);
-    } finally {
-      setIsExecutingReadyTasks(false);
-    }
+    await executeReadyTasks(activeSession);
   }
 
   return (
@@ -984,7 +1343,13 @@ export function MissionControl(): React.JSX.Element {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone="info">Ready to initialize</Badge>
+              <Badge tone={executionPlan ? "success" : "info"}>
+                {executionPlan
+                  ? "Execution timeline ready"
+                  : isInitializing
+                    ? "Planning in background"
+                    : "Preparing organization"}
+              </Badge>
               <Badge tone={providerHealth?.is_healthy === false ? "danger" : "info"}>
                 Provider: {providerHealth?.provider_name ?? "Checking..."}
               </Badge>
@@ -992,7 +1357,9 @@ export function MissionControl(): React.JSX.Element {
           </div>
           <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <SummaryCard label="Mission status">
-              <Badge tone="info">Ready to initialize</Badge>
+              <Badge tone={executionPlan ? "success" : "info"}>
+                {executionPlan ? "In formation" : "Preparing"}
+              </Badge>
             </SummaryCard>
             <SummaryCard label="Organization type">
               <p className="text-body font-medium">{blueprint.organization_type}</p>
@@ -1003,18 +1370,12 @@ export function MissionControl(): React.JSX.Element {
             <SummaryCard label="Creation time">
               <p className="text-body text-secondary">{creationTime}</p>
             </SummaryCard>
-            <SummaryCard label="Estimated completion">
+            <SummaryCard label="Estimated Project Duration">
               <p className="text-body text-secondary">{blueprint.estimated_duration}</p>
             </SummaryCard>
           </div>
+          <BackgroundGenerationProgress stages={backgroundStages} />
           {providerError ? <NotificationToast message={providerError} tone="danger" /> : null}
-          {startupMessages.length ? (
-            <div className="mt-4 space-y-2">
-              {startupMessages.map((message) => (
-                <NotificationToast key={message} message={message} tone="warning" />
-              ))}
-            </div>
-          ) : null}
         </section>
         <div className="border-border mt-8 flex gap-4 border-b" role="tablist">
           <button
@@ -1303,7 +1664,12 @@ export function MissionControl(): React.JSX.Element {
               {executionPlan ? (
                 <ol className="mt-6">
                   {executionPlan.phases.map((phase) => (
-                    <li key={phase.phase_number}>
+                    <motionElement.li
+                      animate="visible"
+                      initial="hidden"
+                      key={phase.phase_number}
+                      variants={slideUp}
+                    >
                       <TimelineCard
                         timestamp={`Phase ${phase.phase_number}`}
                         title={phase.phase_name}
@@ -1403,12 +1769,16 @@ export function MissionControl(): React.JSX.Element {
                           ) : null}
                         </div>
                       </TimelineCard>
-                    </li>
+                    </motionElement.li>
                   ))}
                 </ol>
               ) : (
                 <div className="border-border bg-surface mt-6 flex min-h-32 items-center justify-center rounded-lg border border-dashed">
-                  <span className="text-body text-secondary">Preparing Organization...</span>
+                  {isInitializing ? (
+                    <LoadingIndicator label="Preparing execution timeline" />
+                  ) : (
+                    <span className="text-body text-secondary">Preparing Organization...</span>
+                  )}
                 </div>
               )}
             </Panel>
@@ -1420,35 +1790,42 @@ export function MissionControl(): React.JSX.Element {
               {workerAssignmentResult ? (
                 <div className="mt-6 space-y-3">
                   {workerAssignmentResult.workers.map((worker) => (
-                    <Card className="bg-surface p-4" key={worker.worker_id}>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="text-body font-medium">{worker.worker_name}</p>
-                          <p className="text-caption text-secondary mt-1">
-                            {worker.role} · {worker.department}
-                          </p>
+                    <motionElement.div
+                      animate="visible"
+                      initial="hidden"
+                      key={worker.worker_id}
+                      variants={slideUp}
+                    >
+                      <Card className="bg-surface p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-body font-medium">{worker.worker_name}</p>
+                            <p className="text-caption text-secondary mt-1">
+                              {worker.role} · {worker.department}
+                            </p>
+                          </div>
+                          <Badge
+                            className="capitalize"
+                            tone={
+                              executionStatusTone[
+                                executionHistory
+                                  ?.flatMap((result) => result.executions)
+                                  .filter((execution) => execution.worker_id === worker.worker_id)
+                                  .at(-1)?.status ?? "waiting"
+                              ]
+                            }
+                          >
+                            {executionHistory
+                              ?.flatMap((result) => result.executions)
+                              .filter((execution) => execution.worker_id === worker.worker_id)
+                              .at(-1)?.status ?? worker.current_status}
+                          </Badge>
                         </div>
-                        <Badge
-                          className="capitalize"
-                          tone={
-                            executionStatusTone[
-                              executionHistory
-                                ?.flatMap((result) => result.executions)
-                                .filter((execution) => execution.worker_id === worker.worker_id)
-                                .at(-1)?.status ?? "waiting"
-                            ]
-                          }
-                        >
-                          {executionHistory
-                            ?.flatMap((result) => result.executions)
-                            .filter((execution) => execution.worker_id === worker.worker_id)
-                            .at(-1)?.status ?? worker.current_status}
-                        </Badge>
-                      </div>
-                      <p className="text-caption text-muted mt-3">
-                        {worker.assigned_tasks.length} assigned tasks
-                      </p>
-                    </Card>
+                        <p className="text-caption text-muted mt-3">
+                          {worker.assigned_tasks.length} assigned tasks
+                        </p>
+                      </Card>
+                    </motionElement.div>
                   ))}
                 </div>
               ) : (
@@ -1468,6 +1845,7 @@ export function MissionControl(): React.JSX.Element {
               />
               <MissionArtifacts
                 artifactCollection={artifactCollection}
+                isGenerating={isExecutingReadyTasks}
                 workerAssignmentResult={workerAssignmentResult}
               />
             </Panel>
@@ -1542,7 +1920,11 @@ export function MissionControl(): React.JSX.Element {
             onClick={initializeExecution}
             size="lg"
           >
-            {isInitializing ? "Preparing Execution Plan" : "Initialize Execution"}
+            {executionPlan
+              ? "Execution Timeline Ready"
+              : isInitializing
+                ? "Preparing Execution Plan"
+                : "Initialize Execution"}
             <icons.continue aria-hidden="true" size={16} />
           </Button>
           <Button
@@ -1556,6 +1938,17 @@ export function MissionControl(): React.JSX.Element {
               : `Execute ${readyTaskCount} Ready Tasks`}
             <icons.continue aria-hidden="true" size={16} />
           </Button>
+          {isCollaborativeExecutionDeferred ? (
+            <Button
+              disabled={readyTaskCount === 0 || isExecutingReadyTasks}
+              onClick={runReadyTasks}
+              size="lg"
+              variant="secondary"
+            >
+              Retry Now
+              <icons.continue aria-hidden="true" size={16} />
+            </Button>
+          ) : null}
           {plannerError ? <NotificationToast message={plannerError} tone="danger" /> : null}
           {taskGeneratorError ? (
             <NotificationToast message={taskGeneratorError} tone="danger" />
@@ -1564,13 +1957,6 @@ export function MissionControl(): React.JSX.Element {
             <NotificationToast message={workerAssignmentError} tone="danger" />
           ) : null}
           {workflowError ? <NotificationToast message={workflowError} tone="danger" /> : null}
-          {executionError ? <NotificationToast message={executionError} tone="danger" /> : null}
-          {artifactGenerationError ? (
-            <NotificationToast message={artifactGenerationError} tone="danger" />
-          ) : null}
-          {workspaceError && activeMissionControlTab === "mission" ? (
-            <NotificationToast message={workspaceError} tone="danger" />
-          ) : null}
         </div>
       </PageContainer>
     </main>

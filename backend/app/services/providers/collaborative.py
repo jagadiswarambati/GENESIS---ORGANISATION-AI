@@ -1,10 +1,10 @@
+from app.schemas.artifact import ArtifactCollection
 from app.schemas.collaboration import (
     CollaborationContext,
     CollaborationMessageDraft,
     CollaborationSession,
     CollaborationStage,
 )
-from app.schemas.artifact import ArtifactCollection
 from app.schemas.execution import WorkerExecution
 from app.schemas.memory import OrganizationMemory
 from app.schemas.task_generator import Task
@@ -64,9 +64,26 @@ class CollaborativeAIProvider:
         organization_memory: OrganizationMemory,
         collaboration_context: CollaborationContext | None = None,
     ) -> WorkerExecution:
-        """Create phase messages, then delegate only the task execution to the wrapped provider."""
+        """Coordinate efficiently, then delegate only the task execution to the wrapped provider."""
 
         context = collaboration_context or self._context_for(task, organization_memory)
+        if self._uses_compact_collaboration:
+            execution = await self._provider.execute_task(
+                task,
+                worker,
+                organization_memory,
+                collaboration_context=context,
+            )
+            if execution.status == "completed":
+                await self._record_message(
+                    task,
+                    worker,
+                    context,
+                    "after_execution",
+                    execution.output_summary,
+                )
+            return execution
+
         await self._record_message(task, worker, context, "before_execution")
         context = self._context_for(task, organization_memory)
         await self._record_message(task, worker, context, "during_execution")
@@ -86,6 +103,14 @@ class CollaborativeAIProvider:
                 execution.output_summary,
             )
         return execution
+
+    @property
+    def supports_parallel_execution(self) -> bool:
+        return bool(getattr(self._provider, "supports_parallel_execution", True))
+
+    @property
+    def _uses_compact_collaboration(self) -> bool:
+        return bool(getattr(self._provider, "uses_compact_collaboration", False))
 
     def _context_for(
         self,

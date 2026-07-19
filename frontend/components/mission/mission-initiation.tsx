@@ -13,8 +13,8 @@ import {
 import { fade, pageTransition } from "@/lib/motion";
 import { saveMissionControlSession } from "@/lib/mission-control-session";
 
-import { MissionArchitect } from "./mission-architect";
 import { MissionInput } from "./mission-input";
+import { MissionArchitect } from "./mission-architect";
 import { OrganizationBlueprint } from "./organization-blueprint";
 import { OrganizationBrief } from "./organization-brief";
 import { toOrganizationBrief } from "./organization-brief.adapter";
@@ -27,26 +27,21 @@ export function MissionInitiation(): React.JSX.Element {
   const [mission, setMission] = useState("");
   const [step, setStep] = useState<ExperienceStep>("mission");
   const [blueprint, setBlueprint] = useState<OrganizationBlueprintResponse | null>(null);
+  const [isPreparationComplete, setIsPreparationComplete] = useState(false);
   const [architectError, setArchitectError] = useState<string | null>(null);
-  const [preparationCompleted, setPreparationCompleted] = useState(false);
   const reduceMotion = useReducedMotion();
   const router = useRouter();
   const BrandIcon = icons.organization;
 
-  const returnToMission = () => setStep("mission");
-
-  useEffect(() => {
-    if (step === "preparation" && preparationCompleted && blueprint) setStep("architect");
-  }, [blueprint, preparationCompleted, step]);
-
   const createOrganization = async () => {
     setArchitectError(null);
     setBlueprint(null);
-    setPreparationCompleted(false);
+    setIsPreparationComplete(false);
     setStep("preparation");
 
     try {
-      setBlueprint(await requestOrganizationBlueprint(mission));
+      const result = await requestOrganizationBlueprint(mission);
+      setBlueprint(result);
     } catch (error) {
       const message =
         error instanceof ArchitectApiError
@@ -56,6 +51,23 @@ export function MissionInitiation(): React.JSX.Element {
       setStep("mission");
     }
   };
+
+  const completePreparation = () => {
+    setIsPreparationComplete(true);
+  };
+
+  const continueToMissionControl = () => {
+    if (!blueprint) return;
+
+    saveMissionControlSession(blueprint);
+    router.push("/mission-control");
+  };
+
+  useEffect(() => {
+    if (step === "preparation" && blueprint && isPreparationComplete) {
+      setStep("architect");
+    }
+  }, [blueprint, isPreparationComplete, step]);
 
   return (
     <main className="bg-background min-h-screen">
@@ -91,21 +103,22 @@ export function MissionInitiation(): React.JSX.Element {
                 />
               ) : null}
               {step === "preparation" ? (
-                <OrganizationPreparation onComplete={() => setPreparationCompleted(true)} />
+                <OrganizationPreparation onComplete={completePreparation} />
               ) : null}
-              {step === "architect" ? (
+              {step === "architect" && blueprint ? (
                 <MissionArchitect
-                  onBack={returnToMission}
+                  onBack={() => setStep("mission")}
                   onComplete={() => setStep("blueprint")}
                 />
               ) : null}
-              {step === "blueprint" ? (
+              {step === "blueprint" && blueprint ? (
                 <OrganizationBlueprint
+                  blueprint={blueprint}
                   onBack={() => setStep("architect")}
                   onContinue={() => setStep("dna")}
                 />
               ) : null}
-              {step === "dna" ? (
+              {step === "dna" && blueprint ? (
                 <OrganizationDna
                   onBack={() => setStep("blueprint")}
                   onReview={() => setStep("brief")}
@@ -114,10 +127,7 @@ export function MissionInitiation(): React.JSX.Element {
               {step === "brief" && blueprint ? (
                 <OrganizationBrief
                   brief={toOrganizationBrief(blueprint)}
-                  onApprove={() => {
-                    saveMissionControlSession(blueprint);
-                    router.push("/launch");
-                  }}
+                  onApprove={continueToMissionControl}
                   onBack={() => setStep("dna")}
                 />
               ) : null}

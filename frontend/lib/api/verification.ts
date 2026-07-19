@@ -1,12 +1,14 @@
 import type { ProjectPackage } from "@/lib/api/packaging";
 import type { ProjectWorkspace } from "@/lib/api/workspace";
 
-export type VerificationStatus = "passed" | "failed";
+export type VerificationStatus = "passed" | "failed" | "pending";
+export type ProjectImplementationLevel = "foundation" | "partial" | "complete";
 
 export type SandboxRun = {
   build_status: VerificationStatus;
   exit_code: number;
   finished_at: string;
+  implementation_level: ProjectImplementationLevel;
   package_id: string;
   started_at: string;
   status: VerificationStatus;
@@ -19,6 +21,7 @@ export type BuildResult = {
   build_logs: string[];
   exit_code: number;
   failed_checks: number;
+  pending_checks: number;
   passed_checks: number;
   status: VerificationStatus;
   target: string;

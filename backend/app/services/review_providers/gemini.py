@@ -18,13 +18,7 @@ from app.services.review_providers.openai import (
     MAX_ARTIFACT_CONTENT_LENGTH,
     OpenAIProjectReviewProvider,
 )
-
-REFINED_ARTIFACT_SCHEMA = {
-    "type": "object",
-    "properties": {"content": {"type": "string"}},
-    "required": ["content"],
-    "additionalProperties": False,
-}
+from app.services.review_providers.schemas import REFINED_ARTIFACT_SCHEMA
 
 
 class GeminiProjectReviewProvider:

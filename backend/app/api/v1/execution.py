@@ -36,6 +36,8 @@ async def get_execution_provider_health() -> ProviderHealth:
             provider_name = "OpenAI"
         elif provider_id == "gemini":
             provider_name = "Gemini"
+        elif provider_id == "ollama":
+            provider_name = "Ollama"
         return ProviderHealth(
             provider_id=provider_id,
             provider_name=provider_name,

@@ -1,9 +1,10 @@
 import ast
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 
 from app.schemas.verification import (
     BuildResult,
+    ProjectImplementationLevel,
     ProjectVerificationRequest,
     SandboxRun,
     VerificationReport,
@@ -11,6 +12,7 @@ from app.schemas.verification import (
 from app.schemas.workspace import WorkspaceFile, WorkspaceFolder
 
 REQUIRED_FOLDERS = ("backend", "frontend", "docs", "tests", "deployment", "database")
+SOURCE_FILE_SUFFIXES = (".js", ".jsx", ".py", ".ts", ".tsx")
 
 
 class VerificationEngine:
@@ -19,23 +21,33 @@ class VerificationEngine:
     def verify(self, request: ProjectVerificationRequest) -> VerificationReport:
         """Build a deterministic verification report for the supplied package revision."""
 
-        started_at = datetime.now(timezone.utc)
+        started_at = datetime.now(UTC)
         workspace_files = self._workspace_files(request.workspace.root_folder)
+        folder_paths = {
+            folder.folder_path for folder in self._workspace_folders(request.workspace.root_folder)
+        }
         package_files = set(request.package_included_files)
         results = [
-            self._verify_backend(request.workspace.root_folder, workspace_files, package_files),
-            self._verify_frontend(request.workspace.root_folder, workspace_files, package_files),
-            self._verify_deployment(package_files),
-            self._verify_documentation(package_files),
+            self._verify_backend(folder_paths, workspace_files, package_files),
+            self._verify_frontend(folder_paths, workspace_files, package_files),
+            self._verify_database(folder_paths),
+            self._verify_deployment(folder_paths, package_files),
+            self._verify_documentation(folder_paths, package_files),
         ]
         failed_results = [result for result in results if result.status == "failed"]
         status = "failed" if failed_results else "passed"
-        finished_at = datetime.now(timezone.utc)
+        implementation_level = self._implementation_level(workspace_files)
+        code_generation_pending = any(result.status == "pending" for result in results)
+        finished_at = datetime.now(UTC)
         passed_checks = sum(result.passed_checks for result in results)
+        pending_checks = sum(result.pending_checks for result in results)
         failed_checks = sum(result.failed_checks for result in results)
-        summary = (
-            f"Deterministic verification completed with {passed_checks} passed checks and "
-            f"{failed_checks} failed checks. No generated user code was executed."
+        summary = self._summary(
+            failed_checks=failed_checks,
+            implementation_level=implementation_level,
+            passed_checks=passed_checks,
+            pending_checks=pending_checks,
+            status=status,
         )
         sandbox_run = SandboxRun(
             verification_id=self._verification_id(request.project_package.package_id, started_at),
@@ -44,7 +56,8 @@ class VerificationEngine:
             finished_at=finished_at,
             status=status,
             build_status=status,
-            test_status=status,
+            test_status="pending" if status == "passed" and code_generation_pending else status,
+            implementation_level=implementation_level,
             exit_code=1 if failed_results else 0,
             verification_summary=summary,
         )
@@ -58,34 +71,33 @@ class VerificationEngine:
 
     def _verify_backend(
         self,
-        root: WorkspaceFolder,
+        folder_paths: set[str],
         workspace_files: list[WorkspaceFile],
         package_files: set[str],
     ) -> BuildResult:
-        folder_paths = {folder.folder_path for folder in self._workspace_folders(root)}
         backend_files = [file for file in workspace_files if file.file_path.startswith("backend/")]
         python_files = [file for file in backend_files if file.file_name.endswith(".py")]
         checks: list[tuple[bool, str]] = [
+            ("backend" in folder_paths, "Verified backend/ project structure."),
             (
-                folder_path in folder_paths,
-                f"Verified required {folder_path}/ project structure.",
-            )
-            for folder_path in REQUIRED_FOLDERS
+                "backend/requirements.txt" in package_files or "requirements.txt" in package_files,
+                "Verified Python requirements file is present.",
+            ),
+            (
+                "Dockerfile" in package_files,
+                "Verified FastAPI startup command is supplied by the package Dockerfile.",
+            ),
         ]
-        checks.extend(
-            [
-                (bool(python_files), "Verified generated Python backend source is present."),
-                (
-                    "backend/requirements.txt" in package_files
-                    or "requirements.txt" in package_files,
-                    "Verified Python requirements file is present.",
-                ),
-                (
-                    "Dockerfile" in package_files and "backend" in folder_paths,
-                    "Verified FastAPI startup command is supplied by the package Dockerfile.",
-                ),
-            ]
-        )
+
+        if not all(check_passed for check_passed, _ in checks):
+            return self._result("Backend", checks)
+
+        if not python_files:
+            return self._pending_result(
+                "Backend",
+                checks,
+                "Generated backend source is awaiting code generation.",
+            )
 
         for python_file in python_files:
             try:
@@ -107,11 +119,10 @@ class VerificationEngine:
 
     def _verify_frontend(
         self,
-        root: WorkspaceFolder,
+        folder_paths: set[str],
         workspace_files: list[WorkspaceFile],
         package_files: set[str],
     ) -> BuildResult:
-        folder_paths = {folder.folder_path for folder in self._workspace_folders(root)}
         file_paths = {file.file_path for file in workspace_files}
         checks = [
             ("frontend" in folder_paths, "Verified frontend/ project structure."),
@@ -131,27 +142,36 @@ class VerificationEngine:
                 "Verified frontend build configuration or app directory.",
             ),
             (
-                "frontend/app/page.tsx" in package_files
-                or "frontend/app/page.tsx" in file_paths,
+                "frontend/app/page.tsx" in package_files or "frontend/app/page.tsx" in file_paths,
                 "Verified frontend App Router entry point.",
             ),
         ]
         return self._result("Frontend", checks)
 
-    def _verify_deployment(self, package_files: set[str]) -> BuildResult:
+    @staticmethod
+    def _verify_database(folder_paths: set[str]) -> BuildResult:
+        checks = [("database" in folder_paths, "Verified database/ project structure.")]
+        return VerificationEngine._result("Database", checks)
+
+    @staticmethod
+    def _verify_deployment(folder_paths: set[str], package_files: set[str]) -> BuildResult:
         checks = [
+            ("deployment" in folder_paths, "Verified deployment/ project structure."),
             ("Dockerfile" in package_files, "Verified Dockerfile."),
             ("docker-compose.yml" in package_files, "Verified docker-compose.yml."),
         ]
-        return self._result("Deployment", checks)
+        return VerificationEngine._result("Deployment", checks)
 
-    def _verify_documentation(self, package_files: set[str]) -> BuildResult:
+    @staticmethod
+    def _verify_documentation(folder_paths: set[str], package_files: set[str]) -> BuildResult:
         checks = [
+            ("docs" in folder_paths, "Verified docs/ project structure."),
+            ("tests" in folder_paths, "Verified tests/ project structure."),
             ("README.md" in package_files, "Verified README.md."),
             (".env.example" in package_files, "Verified environment template."),
             ("genesis-manifest.json" in package_files, "Verified package manifest."),
         ]
-        return self._result("Documentation", checks)
+        return VerificationEngine._result("Documentation", checks)
 
     @staticmethod
     def _result(target: str, checks: list[tuple[bool, str]]) -> BuildResult:
@@ -166,8 +186,70 @@ class VerificationEngine:
             status="passed" if failed_checks == 0 else "failed",
             exit_code=0 if failed_checks == 0 else 1,
             passed_checks=passed_checks,
+            pending_checks=0,
             failed_checks=failed_checks,
             build_logs=logs,
+        )
+
+    @staticmethod
+    def _pending_result(
+        target: str,
+        checks: list[tuple[bool, str]],
+        pending_message: str,
+    ) -> BuildResult:
+        return BuildResult(
+            target=target,
+            status="pending",
+            exit_code=0,
+            passed_checks=sum(check_passed for check_passed, _ in checks),
+            pending_checks=1,
+            failed_checks=0,
+            build_logs=[
+                *(f"PASS: {message}" for check_passed, message in checks if check_passed),
+                f"PENDING: {pending_message}",
+            ],
+        )
+
+    @staticmethod
+    def _implementation_level(workspace_files: list[WorkspaceFile]) -> ProjectImplementationLevel:
+        has_backend_source = any(
+            file.file_path.startswith("backend/") and file.file_name.endswith(".py")
+            for file in workspace_files
+        )
+        has_frontend_source = any(
+            file.file_path.startswith("frontend/") and file.file_name.endswith(SOURCE_FILE_SUFFIXES)
+            for file in workspace_files
+        )
+        if has_backend_source and has_frontend_source:
+            return "complete"
+        if has_backend_source or has_frontend_source:
+            return "partial"
+        return "foundation"
+
+    @staticmethod
+    def _summary(
+        *,
+        failed_checks: int,
+        implementation_level: ProjectImplementationLevel,
+        passed_checks: int,
+        pending_checks: int,
+        status: str,
+    ) -> str:
+        if status == "failed":
+            outcome = "Structural verification found issues that require review."
+        elif implementation_level == "foundation":
+            outcome = (
+                "Project foundation verified; generated backend source is awaiting code generation."
+            )
+        elif implementation_level == "partial":
+            outcome = (
+                "Partial implementation verified; remaining source surfaces may still be generated."
+            )
+        else:
+            outcome = "Complete implementation structure verified."
+        return (
+            f"{outcome} {passed_checks} checks passed, {pending_checks} awaiting generation, and "
+            f"{failed_checks} structural failures. No generated user code was executed."
         )
 
     @staticmethod

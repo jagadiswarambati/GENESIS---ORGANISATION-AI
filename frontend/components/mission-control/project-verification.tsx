@@ -4,13 +4,39 @@ import { Badge } from "@/components/design-system/badge";
 import { Button } from "@/components/design-system/button";
 import { Card } from "@/components/design-system/card";
 import { LoadingIndicator, NotificationToast } from "@/components/design-system/feedback";
-import type { VerificationReport, VerificationStatus } from "@/lib/api/verification";
+import type {
+  ProjectImplementationLevel,
+  VerificationReport,
+  VerificationStatus,
+} from "@/lib/api/verification";
 import { formatMissionControlTime } from "@/lib/mission-control-session";
 
-const statusTone: Record<VerificationStatus, "success" | "danger"> = {
+const statusTone: Record<VerificationStatus, "success" | "danger" | "warning"> = {
   failed: "danger",
   passed: "success",
+  pending: "warning",
 };
+
+const implementationLabel: Record<ProjectImplementationLevel, string> = {
+  complete: "Complete Implementation",
+  foundation: "Project Foundation",
+  partial: "Partial Implementation",
+};
+
+function verificationStatusLabel(
+  implementationLevel: ProjectImplementationLevel,
+  status: VerificationStatus,
+): string {
+  if (status === "failed") return "Verification Failed";
+  if (implementationLevel === "foundation") return "Foundation Verified";
+  if (implementationLevel === "partial") return "Partial Implementation Verified";
+  return "Complete Implementation Verified";
+}
+
+function targetStatusLabel(status: VerificationStatus): string {
+  if (status === "pending") return "Awaiting Code Generation";
+  return status === "passed" ? "Verified" : "Verification Failed";
+}
 
 export function ProjectVerificationPanel({
   canVerify,
@@ -58,23 +84,33 @@ export function ProjectVerificationPanel({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Card className="p-4">
           <p className="text-label text-muted">Verification status</p>
-          <Badge className="mt-2 capitalize" tone={statusTone[sandboxRun.status]}>
-            {sandboxRun.status}
+          <Badge className="mt-2" tone={statusTone[sandboxRun.status]}>
+            {verificationStatusLabel(sandboxRun.implementation_level, sandboxRun.status)}
           </Badge>
         </Card>
         <Card className="p-4">
-          <p className="text-label text-muted">Build status</p>
-          <Badge className="mt-2 capitalize" tone={statusTone[sandboxRun.build_status]}>
-            {sandboxRun.build_status}
+          <p className="text-label text-muted">Project scope</p>
+          <p className="text-body mt-2 font-medium">
+            {implementationLabel[sandboxRun.implementation_level]}
+          </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-label text-muted">Structural checks</p>
+          <Badge className="mt-2" tone={statusTone[sandboxRun.build_status]}>
+            {sandboxRun.build_status === "passed" ? "Verified" : sandboxRun.build_status}
           </Badge>
         </Card>
         <Card className="p-4">
-          <p className="text-label text-muted">Test status</p>
-          <Badge className="mt-2 capitalize" tone={statusTone[sandboxRun.test_status]}>
-            {sandboxRun.test_status}
+          <p className="text-label text-muted">Code generation</p>
+          <Badge className="mt-2" tone={statusTone[sandboxRun.test_status]}>
+            {sandboxRun.test_status === "pending"
+              ? "Awaiting Code Generation"
+              : sandboxRun.test_status === "passed"
+                ? "Verified"
+                : "Verification Failed"}
           </Badge>
         </Card>
         <Card className="p-4">
@@ -110,12 +146,11 @@ export function ProjectVerificationPanel({
               <div>
                 <p className="text-title">{result.target}</p>
                 <p className="text-caption text-secondary mt-1">
-                  {result.passed_checks} passed · {result.failed_checks} failed
+                  {result.passed_checks} passed · {result.pending_checks} awaiting ·{" "}
+                  {result.failed_checks} failed
                 </p>
               </div>
-              <Badge className="capitalize" tone={statusTone[result.status]}>
-                {result.status}
-              </Badge>
+              <Badge tone={statusTone[result.status]}>{targetStatusLabel(result.status)}</Badge>
             </div>
             <pre className="border-border bg-panel text-caption mt-4 max-h-44 overflow-auto whitespace-pre-wrap rounded-lg border p-3">
               {result.build_logs.join("\n")}

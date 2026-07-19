@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
+import asyncio
+import logging
+from datetime import UTC, datetime
 from hashlib import sha256
 
-from app.core.errors import ProjectReviewValidationError
+from app.core.errors import ProjectReviewDeferredError, ProjectReviewValidationError
 from app.schemas.artifact import ArtifactCollection, MissionArtifact
 from app.schemas.memory import MemoryEntry, OrganizationMemory
 from app.schemas.review import (
@@ -15,6 +17,9 @@ from app.schemas.review import (
 from app.schemas.workspace import WorkspaceFile, WorkspaceFolder
 from app.services.review_providers.base import ProjectReviewProvider
 
+logger = logging.getLogger(__name__)
+PROJECT_REVIEW_TIMEOUT_SECONDS = 60
+
 
 class ProjectReviewService:
     """Review project outputs and selectively refine source artifacts without changing execution."""
@@ -25,8 +30,20 @@ class ProjectReviewService:
     async def create_review(self, request: ProjectReviewRequest) -> ProjectReview:
         """Produce a typed review from existing workspace, package, memory, and quality signals."""
 
-        draft = await self._provider.review(request)
-        created_at = datetime.now(timezone.utc)
+        try:
+            async with asyncio.timeout(PROJECT_REVIEW_TIMEOUT_SECONDS):
+                draft = await self._provider.review(request)
+        except TimeoutError as error:
+            logger.warning(
+                "Project review timed out: provider=%s timeout_seconds=%s workspace_id=%s",
+                self._provider.provider_name,
+                PROJECT_REVIEW_TIMEOUT_SECONDS,
+                request.workspace.workspace_id,
+                exc_info=error,
+            )
+            raise ProjectReviewDeferredError from error
+
+        created_at = datetime.now(UTC)
         review_id = self._review_id(request.workspace.workspace_id, created_at)
         workspace_file_paths = {
             file.file_path for file in self._workspace_files(request.workspace.root_folder)
@@ -99,7 +116,7 @@ class ProjectReviewService:
             artifact_collection=request.artifact_collection,
             organization_memory=request.organization_memory,
         )
-        refined_at = datetime.now(timezone.utc)
+        refined_at = datetime.now(UTC)
         refined_artifacts: list[MissionArtifact] = []
         resolved_suggestion_ids: set[str] = set()
         for artifact_id, suggestions in suggestions_by_artifact.items():

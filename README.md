@@ -70,13 +70,18 @@ application is available at `http://localhost:3000`.
 ### Execution provider configuration
 
 - `GENESIS_AI_PROVIDER`: `mock` (default) uses the local deterministic provider;
-  `openai` enables the OpenAI Responses API provider; `gemini` enables Google Gemini.
+  `openai` enables the OpenAI Responses API provider; `gemini` enables Google Gemini;
+  `ollama` enables the local Ollama provider.
 - `OPENAI_API_KEY`: required only when `GENESIS_AI_PROVIDER=openai`.
 - `GENESIS_OPENAI_MODEL`: Responses API model for OpenAI-backed Architect and
   execution calls; defaults to `gpt-5.6`.
 - `GEMINI_API_KEY`: required only when `GENESIS_AI_PROVIDER=gemini`.
 - `GENESIS_GEMINI_MODEL`: Gemini model for Gemini-backed Architect and execution calls;
   defaults to `gemini-3.5-flash`.
+- `GENESIS_OLLAMA_BASE_URL`: local Ollama HTTP endpoint; defaults to
+  `http://localhost:11434`.
+- `GENESIS_OLLAMA_MODEL`: local model used for Architect, execution, and review calls;
+  defaults to `llama3.2:3b`.
 
 ### Run locally
 

@@ -3,7 +3,7 @@ import type { MissionArtifact } from "@/lib/api/artifacts";
 import type { ConversationMessage } from "@/lib/api/collaboration";
 import type { Task } from "@/lib/api/task-generator";
 import type { ProjectHealthStatus } from "@/lib/api/validation";
-import type { VerificationStatus } from "@/lib/api/verification";
+import type { ProjectImplementationLevel, VerificationStatus } from "@/lib/api/verification";
 import type { DeploymentStatus, RuntimeStatus } from "@/lib/api/deployment";
 import type { WorkspaceFile, WorkspaceFolder } from "@/lib/api/workspace";
 import type { WorkflowTaskStatus } from "@/lib/api/workflow";
@@ -56,6 +56,7 @@ export type MissionDashboardData = {
   };
   verification: {
     buildSuccessRate: number;
+    implementationLevel: ProjectImplementationLevel | "pending";
     lastVerificationTime: string;
     status: VerificationStatus | "pending";
   };
@@ -272,6 +273,8 @@ export function aggregateMissionDashboard(session: MissionControlSession): Missi
           : 0
         : 0,
       lastVerificationTime: session.verificationReport?.sandbox_run.finished_at ?? "",
+      implementationLevel:
+        session.verificationReport?.sandbox_run.implementation_level ?? "pending",
       status: session.verificationReport?.sandbox_run.status ?? "pending",
     },
     review: {

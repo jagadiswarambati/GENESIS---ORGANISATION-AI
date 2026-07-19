@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -13,6 +14,7 @@ from app.services.project_review import ProjectReviewService
 from app.services.review_providers.factory import ProjectReviewProviderFactory
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_project_review_service() -> ProjectReviewService:
@@ -26,7 +28,16 @@ async def create_project_review(
 ) -> ProjectReview:
     """Review existing project outputs without changing planning, execution, or packaging."""
 
-    return await service.create_review(request)
+    try:
+        return await service.create_review(request)
+    except Exception as error:
+        logger.exception(
+            "Project review failed: exception_type=%s exception_message=%s workspace_id=%s",
+            type(error).__name__,
+            str(error),
+            request.workspace.workspace_id,
+        )
+        raise
 
 
 @router.post("/project-reviews/refinements", response_model=ProjectRefinementResult)

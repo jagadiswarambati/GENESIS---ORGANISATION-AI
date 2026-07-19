@@ -45,6 +45,7 @@ async def lifespan(_: FastAPI):
         logger.warning("Genesis startup diagnostic: %s", message)
     yield
 
+
 app = FastAPI(
     title=settings.app_name,
     description=settings.app_description,
@@ -77,6 +78,12 @@ async def handle_architect_error(_: Request, error: ArchitectError) -> JSONRespo
 async def handle_execution_provider_error(
     _: Request, error: ExecutionProviderError
 ) -> JSONResponse:
+    logger.error(
+        "Genesis execution provider error: exception_type=%s exception_message=%s",
+        type(error).__name__,
+        str(error),
+        exc_info=(type(error), error, error.__traceback__),
+    )
     payload = ApiError(code=error.code, message=error.message)
     return JSONResponse(status_code=error.status_code, content=payload.model_dump())
 
@@ -90,8 +97,13 @@ async def handle_project_review_error(_: Request, error: ProjectReviewError) -> 
 @app.exception_handler(RequestValidationError)
 async def handle_request_validation_error(
     request: Request,
-    __: RequestValidationError,
+    error: RequestValidationError,
 ) -> JSONResponse:
+    logger.warning(
+        "Genesis request validation failed: path=%s validation_errors=%s",
+        request.url.path,
+        error.errors(),
+    )
     payload = ApiError(
         code="invalid_request",
         message=REQUEST_VALIDATION_MESSAGES.get(

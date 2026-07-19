@@ -15,6 +15,7 @@ import { motion as motionElement, useReducedMotion } from "framer-motion";
 import { useMemo } from "react";
 
 import { Button } from "@/components/design-system/button";
+import type { OrganizationBlueprint as OrganizationBlueprintResponse } from "@/lib/api/architect";
 import { icons } from "@/lib/icons";
 import { organizationGeneration, slideUp } from "@/lib/motion";
 
@@ -35,88 +36,82 @@ function BlueprintNodeComponent({ data }: NodeProps<BlueprintNode>): React.JSX.E
 
 const nodeTypes = { blueprint: BlueprintNodeComponent };
 
-const blueprintEdges: Edge[] = [
-  ["organization", "research"],
-  ["organization", "strategy"],
-  ["organization", "creative"],
-  ["research", "research-role"],
-  ["strategy", "strategy-role"],
-  ["creative", "creative-role"],
-  ["research-role", "research-worker"],
-  ["strategy-role", "strategy-worker"],
-  ["creative-role", "creative-worker"],
-].map(([source, target]) => ({ id: `${source}-${target}`, source, target, type: "smoothstep" }));
-
 export function OrganizationBlueprint({
+  blueprint,
   onBack,
   onContinue,
-}: Readonly<{ onBack: () => void; onContinue: () => void }>): React.JSX.Element {
+}: Readonly<{
+  blueprint: OrganizationBlueprintResponse;
+  onBack: () => void;
+  onContinue: () => void;
+}>): React.JSX.Element {
   const reduceMotion = useReducedMotion();
-  const nodes = useMemo<BlueprintNode[]>(
-    () => [
-      {
-        id: "organization",
+  const { edges, nodes } = useMemo(() => {
+    const visibleDepartments = blueprint.departments.slice(0, 4);
+    const columnWidth = 230;
+    const organizationPosition = ((visibleDepartments.length - 1) * columnWidth) / 2;
+    const organizationNode: BlueprintNode = {
+      id: "organization",
+      type: "blueprint",
+      position: { x: organizationPosition, y: 0 },
+      data: { kind: "organization", label: blueprint.organization_name },
+    };
+    const departmentNodes: BlueprintNode[] = [];
+    const roleNodes: BlueprintNode[] = [];
+    const workerNodes: BlueprintNode[] = [];
+    const flowEdges: Edge[] = [];
+
+    visibleDepartments.forEach((department, index) => {
+      const departmentId = `department-${index}`;
+      const roleId = `role-${index}`;
+      const workerId = `worker-${index}`;
+      const position = { x: index * columnWidth, y: 110 };
+      const primaryRole = department.roles[0];
+      const workerCount = department.roles.reduce((count, role) => count + role.worker_count, 0);
+
+      departmentNodes.push({
+        id: departmentId,
         type: "blueprint",
-        position: { x: 310, y: 0 },
-        data: { kind: "organization", label: "Genesis Organization" },
-      },
-      {
-        id: "research",
+        position,
+        data: { kind: "department", label: department.name },
+      });
+      roleNodes.push({
+        id: roleId,
         type: "blueprint",
-        position: { x: 40, y: 110 },
-        data: { kind: "department", label: "Research" },
-      },
-      {
-        id: "strategy",
+        position: { x: position.x, y: 220 },
+        data: { kind: "role", label: primaryRole?.name ?? "Specialist role" },
+      });
+      workerNodes.push({
+        id: workerId,
         type: "blueprint",
-        position: { x: 310, y: 110 },
-        data: { kind: "department", label: "Strategy" },
-      },
-      {
-        id: "creative",
-        type: "blueprint",
-        position: { x: 580, y: 110 },
-        data: { kind: "department", label: "Creative" },
-      },
-      {
-        id: "research-role",
-        type: "blueprint",
-        position: { x: 40, y: 220 },
-        data: { kind: "role", label: "Research Lead" },
-      },
-      {
-        id: "strategy-role",
-        type: "blueprint",
-        position: { x: 310, y: 220 },
-        data: { kind: "role", label: "Mission Strategist" },
-      },
-      {
-        id: "creative-role",
-        type: "blueprint",
-        position: { x: 580, y: 220 },
-        data: { kind: "role", label: "Creative Lead" },
-      },
-      {
-        id: "research-worker",
-        type: "blueprint",
-        position: { x: 40, y: 330 },
-        data: { kind: "worker", label: "Research Worker" },
-      },
-      {
-        id: "strategy-worker",
-        type: "blueprint",
-        position: { x: 310, y: 330 },
-        data: { kind: "worker", label: "Strategy Worker" },
-      },
-      {
-        id: "creative-worker",
-        type: "blueprint",
-        position: { x: 580, y: 330 },
-        data: { kind: "worker", label: "Creative Worker" },
-      },
-    ],
-    [],
-  );
+        position: { x: position.x, y: 330 },
+        data: {
+          kind: "worker",
+          label: `${workerCount || 1} ${workerCount === 1 ? "worker" : "workers"}`,
+        },
+      });
+      flowEdges.push(
+        {
+          id: `organization-${departmentId}`,
+          source: "organization",
+          target: departmentId,
+          type: "smoothstep",
+        },
+        {
+          id: `${departmentId}-${roleId}`,
+          source: departmentId,
+          target: roleId,
+          type: "smoothstep",
+        },
+        { id: `${roleId}-${workerId}`, source: roleId, target: workerId, type: "smoothstep" },
+      );
+    });
+
+    return {
+      edges: flowEdges,
+      nodes: [organizationNode, ...departmentNodes, ...roleNodes, ...workerNodes],
+    };
+  }, [blueprint.departments, blueprint.organization_name]);
 
   const NetworkIcon = icons.network;
   return (
@@ -145,7 +140,7 @@ export function OrganizationBlueprint({
         variants={reduceMotion ? undefined : slideUp}
       >
         <ReactFlow
-          edges={blueprintEdges}
+          edges={edges}
           fitView
           fitViewOptions={{ padding: 0.18 }}
           maxZoom={1.25}

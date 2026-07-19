@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import PurePosixPath
 
@@ -47,7 +47,7 @@ class WorkspaceEngine:
     def generate(self, request: WorkspaceGenerationRequest) -> WorkspaceGenerationResult:
         """Assemble a workspace without modifying artifact creation or execution behavior."""
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         workspace_id = self._workspace_id(request.project_name)
         root = FolderNode(name=self._project_directory_name(request.project_name), path="/")
         for folder_path in BASE_FOLDERS:
@@ -102,6 +102,11 @@ class WorkspaceEngine:
     def _directory_for(artifact: MissionArtifact) -> str:
         department = artifact.department.lower()
         artifact_type = artifact.artifact_type.lower()
+        artifact_name = artifact.artifact_name.lower()
+        if artifact_name == "deployment-summary.md":
+            return "deployment"
+        if artifact_name in {"readme.md", "project-structure.md", "worker-summary.md"}:
+            return "docs"
         if "marketing" in department:
             return "docs/marketing"
         if "research" in department or "strategy" in department:

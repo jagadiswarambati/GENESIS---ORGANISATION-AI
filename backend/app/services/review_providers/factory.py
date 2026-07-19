@@ -3,6 +3,7 @@ from app.core.errors import ProjectReviewConfigurationError
 from app.services.review_providers.base import ProjectReviewProvider
 from app.services.review_providers.gemini import GeminiProjectReviewProvider
 from app.services.review_providers.mock import DeterministicProjectReviewProvider
+from app.services.review_providers.ollama import OllamaProjectReviewProvider
 from app.services.review_providers.openai import OpenAIProjectReviewProvider
 
 
@@ -17,4 +18,6 @@ class ProjectReviewProviderFactory:
             return OpenAIProjectReviewProvider(settings)
         if settings.ai_provider == "gemini":
             return GeminiProjectReviewProvider(settings)
+        if settings.ai_provider == "ollama":
+            return OllamaProjectReviewProvider(settings)
         raise ProjectReviewConfigurationError

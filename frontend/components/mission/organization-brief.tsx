@@ -22,12 +22,13 @@ export function OrganizationBrief({
         <span className="bg-primary/10 text-primary mx-auto flex size-12 items-center justify-center rounded-2xl">
           <BriefIcon aria-hidden="true" size={21} />
         </span>
-        <p className="text-label text-muted mt-5">Organization Brief</p>
+        <p className="text-label text-muted mt-5">Organization Summary</p>
         <h1 className="text-heading mt-2" id="brief-title">
-          Review the organization before it begins.
+          Review the organization blueprint.
         </h1>
         <p className="text-body text-secondary mt-3">
-          A concise proposal for the structure, operating posture, and expected outcome.
+          Confirm the structure, operating posture, and expected project delivery before entering
+          Mission Control.
         </p>
       </div>
       <div className="mt-8 grid gap-4 lg:grid-cols-3">
@@ -70,15 +71,19 @@ export function OrganizationBrief({
             ))}
           </div>
         </OrganizationBriefCard>
-        <OrganizationBriefCard eyebrow="Capacity and duration" title="Initial execution envelope">
+        <OrganizationBriefCard eyebrow="Capacity and delivery" title="Initial execution envelope">
           <div className="space-y-4">
             <div>
               <p className="text-label text-muted">Worker capacity</p>
               <p className="text-body text-secondary mt-1">{brief.estimatedWorkerCapacity}</p>
             </div>
             <div>
-              <p className="text-label text-muted">Estimated duration</p>
+              <p className="text-label text-muted">Estimated Project Duration</p>
               <p className="text-body text-secondary mt-1">{brief.estimatedDuration}</p>
+              <p className="text-caption text-muted mt-1">
+                Expected time to deliver and implement the proposed project, not Genesis generation
+                time.
+              </p>
             </div>
           </div>
         </OrganizationBriefCard>
@@ -115,7 +120,7 @@ export function OrganizationBrief({
           Back
         </Button>
         <Button onClick={onApprove} size="lg">
-          Approve Organization
+          Continue to Mission Control
           <icons.approve aria-hidden="true" size={16} />
         </Button>
       </div>

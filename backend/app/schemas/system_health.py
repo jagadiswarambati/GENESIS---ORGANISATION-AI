@@ -38,6 +38,9 @@ class EnvironmentConfiguration(Schema):
     redis_url_configured: bool
     openai_api_key_configured: bool
     openai_model: ShortText
+    ollama_configured: bool
+    ollama_base_url: ShortText
+    ollama_model: ShortText
 
 
 class RuntimePrerequisite(Schema):

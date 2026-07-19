@@ -6,13 +6,15 @@ the configured provider credential.
 
 ```text
 Frontend → POST /api/v1/architect → OrganizationArchitectService
-         → OpenAI Responses API or Gemini API → Pydantic validation → structured JSON
+         → OpenAI Responses API, Gemini API, or Ollama → Pydantic validation → structured JSON
 ```
 
 `POST /api/v1/architect` accepts a mission and returns a typed organization
 blueprint. The active provider is selected with `GENESIS_AI_PROVIDER`. OpenAI uses
 `GENESIS_OPENAI_MODEL` (default `gpt-5.6`) and `OPENAI_API_KEY`; Gemini uses
-`GENESIS_GEMINI_MODEL` (default `gemini-3.5-flash`) and `GEMINI_API_KEY`. Provider
+`GENESIS_GEMINI_MODEL` (default `gemini-3.5-flash`) and `GEMINI_API_KEY`. Ollama uses
+`GENESIS_OLLAMA_BASE_URL` (default `http://localhost:11434`) and
+`GENESIS_OLLAMA_MODEL` (default `llama3.2:3b`) without an API key. Provider
 credentials are read only by the backend process.
 
 The API uses strict JSON Schema output and validates the returned text again

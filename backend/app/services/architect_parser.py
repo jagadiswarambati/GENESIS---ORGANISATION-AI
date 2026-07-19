@@ -11,6 +11,16 @@ def parse_organization_blueprint(raw_output: str) -> OrganizationBlueprint:
 
     try:
         payload = json.loads(raw_output)
-        return OrganizationBlueprint.model_validate(payload)
     except (json.JSONDecodeError, ValidationError) as error:
+        raise ArchitectValidationError from error
+
+    return validate_organization_blueprint(payload)
+
+
+def validate_organization_blueprint(payload: object) -> OrganizationBlueprint:
+    """Validate a decoded Organization Architect payload with the canonical Pydantic model."""
+
+    try:
+        return OrganizationBlueprint.model_validate(payload)
+    except ValidationError as error:
         raise ArchitectValidationError from error
