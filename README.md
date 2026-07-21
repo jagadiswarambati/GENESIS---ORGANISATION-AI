@@ -10,8 +10,8 @@
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)](backend/pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-> **Demo video:** _Add the Build Week walkthrough link here._
-
+[> **Demo video:** 
+](https://youtu.be/tuS3NOaaYP4?si=ueCT_p442oZbnqJp)
 # 📸 Screenshots
 
 ## 🏠 Mission Input
